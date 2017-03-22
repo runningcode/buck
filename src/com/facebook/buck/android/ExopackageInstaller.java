@@ -74,7 +74,7 @@ public class ExopackageInstaller {
   /**
    * Prefix of the path to the agent apk on the device.
    */
-  private static final String AGENT_DEVICE_PATH = "/data/app/" + AgentUtil.AGENT_PACKAGE_NAME;
+  private static final String AGENT_DEVICE_PATH = "/system/app/" + AgentUtil.AGENT_PACKAGE_NAME;
 
   /**
    * Command line to invoke the agent on the device.
