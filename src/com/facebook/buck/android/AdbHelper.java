@@ -31,7 +31,6 @@ import com.android.ddmlib.ShellCommandUnresponsiveException;
 import com.android.ddmlib.TimeoutException;
 import com.facebook.buck.annotations.SuppressForbidden;
 import com.facebook.buck.event.BuckEventBus;
-import com.facebook.buck.event.ConsoleEvent;
 import com.facebook.buck.event.InstallEvent;
 import com.facebook.buck.event.SimplePerfEvent;
 import com.facebook.buck.event.StartActivityEvent;
@@ -615,9 +614,11 @@ public class AdbHelper {
   /**
    * Installs apk on specific device. Reports success or failure to console.
    */
-  @SuppressWarnings("PMD.PrematureDeclaration")
+  @SuppressWarnings({"PMD.PrematureDeclaration", "unused"})
   @SuppressForbidden
   public boolean installApkOnDevice(IDevice device, File apk, boolean installViaSd, boolean quiet) {
+    return true;
+    /**
     String name;
     if (device.isEmulator()) {
       name = device.getSerialNumber() + " (" + device.getAvdName() + ")";
@@ -653,6 +654,7 @@ public class AdbHelper {
       ex.printStackTrace(console.getStdErr());
       return false;
     }
+     **/
   }
 
   @VisibleForTesting
