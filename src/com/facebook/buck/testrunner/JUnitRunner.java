@@ -40,10 +40,13 @@ import org.junit.runners.model.RunnerBuilder;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.logging.Formatter;
 import java.util.logging.Handler;
@@ -92,7 +95,8 @@ public final class JUnitRunner extends BaseRunner {
 
       List<TestResult> results = new ArrayList<>();
       RecordingFilter filter = new RecordingFilter();
-      if (mightBeATestClass(testClass)) {
+      if (mightBeATestClass(testClass) &&
+          !isIgnoredForBuck(Arrays.asList(testClass.getDeclaredAnnotations()))) {
         JUnitCore jUnitCore = new JUnitCore();
         Runner suite = new Computer().getSuite(createRunnerBuilder(), new Class<?>[]{testClass});
         Request request = Request.runner(suite);
@@ -491,7 +495,7 @@ public final class JUnitRunner extends BaseRunner {
         }
         return false;
       }
-      if (description.getAnnotation(Ignore.class) != null) {
+      if (description.getAnnotation(Ignore.class) != null || isIgnoredForBuck(description)) {
         filteredOut.add(TestResult.forDisabled(className, methodName));
         return false;
       }
@@ -506,5 +510,18 @@ public final class JUnitRunner extends BaseRunner {
     public String describe() {
       return FILTER_DESCRIPTION;
     }
+  }
+
+  private boolean isIgnoredForBuck(Description description) {
+    return isIgnoredForBuck(description.getAnnotations());
+  }
+
+  private boolean isIgnoredForBuck(Collection<Annotation> declaredAnnotations) {
+    for (Annotation annotation : declaredAnnotations) {
+      if (annotation.toString().contains("BuckIgnore")) {
+        return true;
+      }
+    }
+    return false;
   }
 }
