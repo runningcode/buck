@@ -28,13 +28,19 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSortedSet;
 import java.io.File;
+import java.nio.file.FileSystems;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
+import java.util.Collection;
+import java.util.stream.Collectors;
 
 public class KotlincStep extends ShellStep {
 
   private static final String CLASSPATH_FLAG = "-cp";
   private static final String DESTINATION_FLAG = "-d";
   private static final String INCLUDE_RUNTIME_FLAG = "-include-runtime";
+  private static final PathMatcher JAVA_PATH_MATCHER = FileSystems.getDefault()
+      .getPathMatcher("glob:*.java");
 
   private final Tool kotlinc;
   private final SourcePathResolver resolver;
@@ -78,8 +84,16 @@ public class KotlincStep extends ShellStep {
         .add(classpath.isEmpty() ? "''" : classpath)
         .add(DESTINATION_FLAG)
         .add(outputDirectory.toString());
-
-    command.addAll(extraArguments).addAll(transform(sourceFilePaths, Object::toString));
+    command.addAll(extraArguments).addAll(filterOutJavaFiles(sourceFilePaths));
     return command.build();
+  }
+
+  // Kotlinc fails if you pass java files to it so let's filter them out.
+  private Collection<String> filterOutJavaFiles(Collection<Path> sourceFilePaths) {
+    return sourceFilePaths
+          .stream()
+          .filter(JAVA_PATH_MATCHER::matches)
+          .map(Path::toString)
+          .collect(Collectors.toSet());
   }
 }
