@@ -25,10 +25,10 @@ import com.facebook.buck.rules.SourcePathRuleFinder;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSortedSet;
-
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 public class OutOfProcessJdkProvidedInMemoryJavac extends OutOfProcessJsr199Javac {
   private static final Logger LOG = Logger.get(OutOfProcessJdkProvidedInMemoryJavac.class);
@@ -37,8 +37,7 @@ public class OutOfProcessJdkProvidedInMemoryJavac extends OutOfProcessJsr199Java
 
   @Override
   public void appendToRuleKey(RuleKeyObjectSink sink) {
-    sink.setReflectively("javac", "oop-jsr199")
-        .setReflectively("javac.type", "oop-in-memory");
+    sink.setReflectively("javac", "oop-jsr199").setReflectively("javac.type", "oop-in-memory");
   }
 
   @Override
@@ -56,24 +55,28 @@ public class OutOfProcessJdkProvidedInMemoryJavac extends OutOfProcessJsr199Java
       JavacExecutionContext context,
       BuildTarget invokingRule,
       ImmutableList<String> options,
-      ImmutableList<ResolvedJavacPluginProperties> annotationProcessors,
+      ImmutableList<JavacPluginJsr199Fields> pluginFields,
       ImmutableSortedSet<Path> javaSourceFilePaths,
       Path pathToSrcsList,
       Optional<Path> workingDirectory,
-      CompilationMode compilationMode) throws InterruptedException {
+      JavacCompilationMode compilationMode)
+      throws InterruptedException {
     Map<String, Object> serializedContext = JavacExecutionContextSerializer.serialize(context);
     if (LOG.isVerboseEnabled()) {
       LOG.verbose("Serialized JavacExecutionContext: %s", serializedContext);
     }
 
-    return getConnection().getRemoteObjectProxy().buildWithClasspath(
-        null,
-        serializedContext,
-        invokingRule.getFullyQualifiedName(),
-        options,
-        ImmutableList.copyOf(javaSourceFilePaths.stream().map(Path::toString).iterator()),
-        pathToSrcsList.toString(),
-        workingDirectory.isPresent() ? workingDirectory.get().toString() : null,
-        compilationMode);
+    return getConnection()
+        .getRemoteObjectProxy()
+        .buildWithClasspath(
+            null,
+            serializedContext,
+            invokingRule.getFullyQualifiedName(),
+            options,
+            javaSourceFilePaths.stream().map(Path::toString).collect(Collectors.toList()),
+            pathToSrcsList.toString(),
+            workingDirectory.isPresent() ? workingDirectory.get().toString() : null,
+            pluginFields,
+            compilationMode.toString());
   }
 }

@@ -19,7 +19,9 @@ package com.facebook.buck.cli;
 import static com.facebook.buck.util.concurrent.MoreFutures.propagateCauseIfInstanceOf;
 
 import com.facebook.buck.graph.AbstractBreadthFirstTraversal;
+import com.facebook.buck.graph.AcyclicDepthFirstPostOrderTraversal;
 import com.facebook.buck.graph.DirectedAcyclicGraph;
+import com.facebook.buck.graph.GraphTraversable;
 import com.facebook.buck.graph.MutableDirectedGraph;
 import com.facebook.buck.io.MorePaths;
 import com.facebook.buck.io.ProjectFilesystem;
@@ -41,6 +43,7 @@ import com.facebook.buck.rules.Cell;
 import com.facebook.buck.rules.Description;
 import com.facebook.buck.rules.TargetNode;
 import com.facebook.buck.rules.TargetNodes;
+import com.facebook.buck.util.HumanReadableException;
 import com.facebook.buck.util.MoreCollectors;
 import com.facebook.buck.util.MoreExceptions;
 import com.google.common.base.Functions;
@@ -55,7 +58,6 @@ import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.SettableFuture;
 import com.google.common.util.concurrent.UncheckedExecutionException;
-
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -72,7 +74,7 @@ import java.util.concurrent.ExecutionException;
 /**
  * The environment of a Buck query that can evaluate queries to produce a result.
  *
- * The query language is documented at docs/command/query.soy
+ * <p>The query language is documented at docs/command/query.soy
  */
 public class BuckQueryEnvironment implements QueryEnvironment {
 
@@ -83,7 +85,7 @@ public class BuckQueryEnvironment implements QueryEnvironment {
   private final OwnersReport.Builder ownersReportBuilder;
   private final TargetPatternEvaluator targetPatternEvaluator;
 
-  private final Map<Cell, BuildFileTree> buildFileTrees =  new HashMap<>();
+  private final Map<Cell, BuildFileTree> buildFileTrees = new HashMap<>();
   private final Map<BuildTarget, QueryTarget> buildTargetToQueryTarget = new HashMap<>();
 
   // Query execution is single threaded, however the buildTransitiveClosure implementation
@@ -101,9 +103,7 @@ public class BuckQueryEnvironment implements QueryEnvironment {
     this.ownersReportBuilder = ownersReportBuilder;
     this.buildFileTrees.put(
         rootCell,
-        new FilesystemBackedBuildFileTree(
-            rootCell.getFilesystem(),
-            rootCell.getBuildFileName()));
+        new FilesystemBackedBuildFileTree(rootCell.getFilesystem(), rootCell.getBuildFileName()));
     this.targetPatternEvaluator = targetPatternEvaluator;
   }
 
@@ -113,8 +113,7 @@ public class BuckQueryEnvironment implements QueryEnvironment {
       PerBuildState parserState,
       TargetPatternEvaluator targetPatternEvaluator) {
     return new BuckQueryEnvironment(
-        rootCell, ownersReportBuilder, parserState, targetPatternEvaluator
-    );
+        rootCell, ownersReportBuilder, parserState, targetPatternEvaluator);
   }
 
   public static BuckQueryEnvironment from(
@@ -122,20 +121,14 @@ public class BuckQueryEnvironment implements QueryEnvironment {
     return from(
         params.getCell(),
         OwnersReport.builder(
-            params.getCell(),
-            params.getParser(),
-            params.getBuckEventBus(),
-            params.getConsole()
-        ),
+            params.getCell(), params.getParser(), params.getBuckEventBus(), params.getConsole()),
         parserState,
         new TargetPatternEvaluator(
             params.getCell(),
             params.getBuckConfig(),
             params.getParser(),
             params.getBuckEventBus(),
-            enableProfiling
-        )
-    );
+            enableProfiling));
   }
 
   public DirectedAcyclicGraph<TargetNode<?, ?>> getTargetGraph() {
@@ -152,10 +145,7 @@ public class BuckQueryEnvironment implements QueryEnvironment {
       targetPatternEvaluator.preloadTargetPatterns(patterns, executor);
     } catch (IOException e) {
       throw new QueryException(
-          e,
-          "Error in preloading targets. %s: %s",
-          e.getClass(),
-          e.getMessage());
+          e, "Error in preloading targets. %s: %s", e.getClass(), e.getMessage());
     } catch (BuildTargetException | BuildFileParseException e) {
       throw new QueryException(e, "Error in preloading targets. %s", e.getMessage());
     }
@@ -168,8 +158,7 @@ public class BuckQueryEnvironment implements QueryEnvironment {
    * @throws QueryException if the evaluation failed.
    */
   public ImmutableSet<QueryTarget> evaluateQuery(
-      QueryExpression expr,
-      ListeningExecutorService executor)
+      QueryExpression expr, ListeningExecutorService executor)
       throws QueryException, InterruptedException {
     Set<String> targetLiterals = new HashSet<>();
     expr.collectTargetPatterns(targetLiterals);
@@ -184,25 +173,25 @@ public class BuckQueryEnvironment implements QueryEnvironment {
 
   @Override
   public ImmutableSet<QueryTarget> getTargetsMatchingPattern(
-      String pattern,
-      ListeningExecutorService executor) throws QueryException, InterruptedException {
+      String pattern, ListeningExecutorService executor)
+      throws QueryException, InterruptedException {
     try {
       return ImmutableSet.copyOf(
           Iterables.concat(
-              targetPatternEvaluator.resolveTargetPatterns(ImmutableList.of(pattern), executor)
+              targetPatternEvaluator
+                  .resolveTargetPatterns(ImmutableList.of(pattern), executor)
                   .values()));
     } catch (BuildTargetException | BuildFileParseException | IOException e) {
       throw new QueryException(e, "Error in resolving targets matching %s", pattern);
     }
   }
 
-  TargetNode<?, ?> getNode(QueryTarget target)
-      throws QueryException {
+  TargetNode<?, ?> getNode(QueryTarget target) throws QueryException {
     if (!(target instanceof QueryBuildTarget)) {
-      throw new IllegalArgumentException(String.format(
-          "Expected %s to be a build target but it was an instance of %s",
-          target,
-          target.getClass().getName()));
+      throw new IllegalArgumentException(
+          String.format(
+              "Expected %s to be a build target but it was an instance of %s",
+              target, target.getClass().getName()));
     }
     try {
       return parserState.getTargetNode(((QueryBuildTarget) target).getBuildTarget());
@@ -229,8 +218,7 @@ public class BuckQueryEnvironment implements QueryEnvironment {
     return builder.build();
   }
 
-  public ImmutableSet<QueryTarget> getTargetsFromBuildTargets(
-      Iterable<BuildTarget> buildTargets) {
+  public ImmutableSet<QueryTarget> getTargetsFromBuildTargets(Iterable<BuildTarget> buildTargets) {
     ImmutableSortedSet.Builder<QueryTarget> builder = ImmutableSortedSet.naturalOrder();
     for (BuildTarget buildTarget : buildTargets) {
       builder.add(getOrCreateQueryBuildTarget(buildTarget));
@@ -272,7 +260,8 @@ public class BuckQueryEnvironment implements QueryEnvironment {
   @Override
   public Set<QueryTarget> getInputs(QueryTarget target) throws QueryException {
     TargetNode<?, ?> node = getNode(target);
-    return node.getInputs().stream()
+    return node.getInputs()
+        .stream()
         .map(QueryFileTarget::of)
         .collect(MoreCollectors.toImmutableSet());
   }
@@ -288,9 +277,10 @@ public class BuckQueryEnvironment implements QueryEnvironment {
 
     new AbstractBreadthFirstTraversal<TargetNode<?, ?>>(nodes) {
       @Override
-      public ImmutableSet<TargetNode<?, ?>>visit(TargetNode<?, ?> node) {
+      public ImmutableSet<TargetNode<?, ?>> visit(TargetNode<?, ?> node) {
         result.add(getOrCreateQueryBuildTarget(node.getBuildTarget()));
-        return node.getParseDeps().stream()
+        return node.getParseDeps()
+            .stream()
             .map(targetsToNodes::get)
             .collect(MoreCollectors.toImmutableSet());
       }
@@ -301,28 +291,27 @@ public class BuckQueryEnvironment implements QueryEnvironment {
 
   @Override
   public void buildTransitiveClosure(
-      Set<QueryTarget> targets,
-      int maxDepth,
-      ListeningExecutorService executor)
+      Set<QueryTarget> targets, int maxDepth, ListeningExecutorService executor)
       throws QueryException, InterruptedException {
     // Filter QueryTargets that are build targets and not yet present in the build target graph.
-    Set<BuildTarget> newBuildTargets = new HashSet<>();
-    for (QueryTarget target : targets) {
-      if (target instanceof QueryBuildTarget) {
-        BuildTarget buildTarget = ((QueryBuildTarget) target).getBuildTarget();
-        if (!targetsToNodes.containsKey(buildTarget)) {
-          newBuildTargets.add(buildTarget);
-        }
-      }
-    }
+    ImmutableSet<BuildTarget> newBuildTargets =
+        targets
+            .stream()
+            .filter(target -> target instanceof QueryBuildTarget)
+            .map(target -> ((QueryBuildTarget) target).getBuildTarget())
+            .filter(buildTarget -> !targetsToNodes.containsKey(buildTarget))
+            .collect(MoreCollectors.toImmutableSet());
 
-    ConcurrentHashMap<BuildTarget, ListenableFuture<TargetNode<?, ?>>> jobsCache =
-        new ConcurrentHashMap<>();
+    // TODO(mkosiba): This looks more and more like the Parser.buildTargetGraph method. Unify the
+    // two.
+
+    ConcurrentHashMap<BuildTarget, ListenableFuture<Void>> jobsCache = new ConcurrentHashMap<>();
 
     try {
-      List<ListenableFuture<TargetNode<?, ?>>> depsFuture = new ArrayList<>();
+      List<ListenableFuture<Void>> depsFuture = new ArrayList<>();
       for (BuildTarget buildTarget : newBuildTargets) {
-        depsFuture.add(buildTransitiveClosureRecursiveWorker(buildTarget, jobsCache));
+        discoverNewTargetsConcurrently(buildTarget, jobsCache)
+            .ifPresent(dep -> depsFuture.add(dep));
       }
       Futures.allAsList(depsFuture).get();
     } catch (ExecutionException e) {
@@ -336,50 +325,102 @@ public class BuckQueryEnvironment implements QueryEnvironment {
           e, "Failed parsing: " + MoreExceptions.getHumanReadableOrLocalizedMessage(e));
     }
 
-    if (!newBuildTargets.isEmpty()) {
-      for (BuildTarget buildTarget : targetsToNodes.keySet()) {
-        if (!buildTargetToQueryTarget.containsKey(buildTarget)) {
-          buildTargetToQueryTarget.put(buildTarget, QueryBuildTarget.of(buildTarget));
+    GraphTraversable<BuildTarget> traversable =
+        target -> {
+          TargetNode<?, ?> node =
+              Preconditions.checkNotNull(
+                  targetsToNodes.get(target),
+                  "Node %s should have been discovered by `discoverNewTargetsConcurrently`.",
+                  target);
+
+          // If a node has been added to the graph it means it and all of its children have been
+          // visited by an acyclic traversal and added to the graph. From this it follows that there
+          // are no outgoing edges from the graph (as it had been "fully" explored before) back out
+          // to the set of nodes we're currently exploring. Based on that:
+          //  - we can't have a cycle involving the "old" nodes,
+          //  - there are no new edges or nodes to be discovered by descending into the "old" nodes,
+          // making this node safe to skip.
+          if (graph.getNodes().contains(node)) {
+            return ImmutableSet.<BuildTarget>of().iterator();
+          }
+          return node.getParseDeps().iterator();
+        };
+
+    AcyclicDepthFirstPostOrderTraversal<BuildTarget> targetNodeTraversal =
+        new AcyclicDepthFirstPostOrderTraversal<>(traversable);
+    try {
+      for (BuildTarget buildTarget : targetNodeTraversal.traverse(newBuildTargets)) {
+        TargetNode<?, ?> node =
+            Preconditions.checkNotNull(
+                targetsToNodes.get(buildTarget), "Couldn't find TargetNode for %s", buildTarget);
+        graph.addNode(node);
+        for (BuildTarget dep : node.getParseDeps()) {
+          graph.addEdge(
+              node,
+              Preconditions.checkNotNull(
+                  targetsToNodes.get(dep), "Couldn't find TargetNode for %s", dep));
         }
+      }
+    } catch (AcyclicDepthFirstPostOrderTraversal.CycleException e) {
+      throw new QueryException(e, e.getMessage());
+    }
+
+    for (BuildTarget buildTarget : jobsCache.keySet()) {
+      if (!buildTargetToQueryTarget.containsKey(buildTarget)) {
+        buildTargetToQueryTarget.put(buildTarget, QueryBuildTarget.of(buildTarget));
       }
     }
   }
 
-  private ListenableFuture<TargetNode<?, ?>> buildTransitiveClosureRecursiveWorker(
-      BuildTarget buildTarget,
-      ConcurrentHashMap<BuildTarget, ListenableFuture<TargetNode<?, ?>>> jobsCache)
+  private Optional<ListenableFuture<Void>> discoverNewTargetsConcurrently(
+      BuildTarget buildTarget, ConcurrentHashMap<BuildTarget, ListenableFuture<Void>> jobsCache)
       throws InterruptedException, QueryException, BuildFileParseException, BuildTargetException {
-    ListenableFuture<TargetNode<?, ?>> job = jobsCache.get(buildTarget);
+    ListenableFuture<Void> job = jobsCache.get(buildTarget);
     if (job != null) {
-      return job;
+      return Optional.empty();
     }
-    SettableFuture<TargetNode<?, ?>> newJob = SettableFuture.create();
+    SettableFuture<Void> newJob = SettableFuture.create();
     if (jobsCache.putIfAbsent(buildTarget, newJob) != null) {
-      return Preconditions.checkNotNull(jobsCache.get(buildTarget));
+      return Optional.empty();
     }
 
-    ListenableFuture<TargetNode<?, ?>> future = Futures.transformAsync(
-        parserState.getTargetNodeJob(buildTarget),
-        targetNode -> {
-          targetsToNodes.put(buildTarget, targetNode);
-          List<ListenableFuture<TargetNode<?, ?>>> depsFuture = new ArrayList<>();
-          final Set<BuildTarget> parseDeps = targetNode.getParseDeps();
-          for (BuildTarget parseDep : parseDeps) {
-            depsFuture.add(
-                Futures.transform(
-                    buildTransitiveClosureRecursiveWorker(parseDep, jobsCache),
-                    depNode -> {
-                      graph.addEdge(targetNode, depNode);
-                      return depNode;
-                    }
-                ));
-          }
-          return Futures.transform(
-              Futures.allAsList(depsFuture),
-              Functions.constant(targetNode));
-        });
+    ListenableFuture<Void> future =
+        Futures.transformAsync(
+            parserState.getTargetNodeJob(buildTarget),
+            targetNode -> {
+              targetsToNodes.put(buildTarget, targetNode);
+              List<ListenableFuture<Void>> depsFuture = new ArrayList<>();
+              final Set<BuildTarget> parseDeps = targetNode.getParseDeps();
+              for (BuildTarget parseDep : parseDeps) {
+                discoverNewTargetsConcurrently(parseDep, jobsCache)
+                    .ifPresent(
+                        depWork ->
+                            depsFuture.add(
+                                attachParentNodeToErrorMessage(buildTarget, parseDep, depWork)));
+              }
+              return Futures.transform(Futures.allAsList(depsFuture), Functions.constant(null));
+            });
     newJob.setFuture(future);
-    return newJob;
+    return Optional.of(newJob);
+  }
+
+  private static ListenableFuture<Void> attachParentNodeToErrorMessage(
+      BuildTarget buildTarget, BuildTarget parseDep, ListenableFuture<Void> depWork) {
+    return Futures.catchingAsync(
+        depWork,
+        Exception.class,
+        exceptionInput -> {
+          if (exceptionInput instanceof BuildTargetException
+              || exceptionInput instanceof BuildFileParseException) {
+            throw new HumanReadableException(
+                exceptionInput,
+                "Couldn't get dependency '%s' of target '%s':\n%s",
+                parseDep,
+                buildTarget,
+                exceptionInput.getMessage());
+          }
+          throw exceptionInput;
+        });
   }
 
   @Override
@@ -389,8 +430,7 @@ public class BuckQueryEnvironment implements QueryEnvironment {
   }
 
   @Override
-  public ImmutableSet<QueryTarget> getBuildFiles(Set<QueryTarget> targets)
-      throws QueryException {
+  public ImmutableSet<QueryTarget> getBuildFiles(Set<QueryTarget> targets) throws QueryException {
     final ProjectFilesystem cellFilesystem = rootCell.getFilesystem();
     final Path rootPath = cellFilesystem.getRootPath();
     Preconditions.checkState(rootPath.isAbsolute());
@@ -404,21 +444,15 @@ public class BuckQueryEnvironment implements QueryEnvironment {
       if (!buildFileTrees.containsKey(cell)) {
         LOG.info("Creating a new filesystem-backed build file tree for %s", cell.getRoot());
         buildFileTrees.put(
-            cell,
-            new FilesystemBackedBuildFileTree(
-                cell.getFilesystem(),
-                cell.getBuildFileName()));
+            cell, new FilesystemBackedBuildFileTree(cell.getFilesystem(), cell.getBuildFileName()));
       }
       BuildFileTree buildFileTree = Preconditions.checkNotNull(buildFileTrees.get(cell));
-      Optional<Path> path = buildFileTree.getBasePathOfAncestorTarget(
-          buildTarget.getBasePath());
+      Optional<Path> path = buildFileTree.getBasePathOfAncestorTarget(buildTarget.getBasePath());
       Preconditions.checkState(path.isPresent());
 
-      Path buildFilePath = MorePaths.relativize(
-          rootPath,
-          cell.getFilesystem()
-              .resolve(path.get())
-              .resolve(cell.getBuildFileName()));
+      Path buildFilePath =
+          MorePaths.relativize(
+              rootPath, cell.getFilesystem().resolve(path.get()).resolve(cell.getBuildFileName()));
       Preconditions.checkState(cellFilesystem.exists(buildFilePath));
       builder.add(QueryFileTarget.of(buildFilePath));
     }
@@ -427,8 +461,8 @@ public class BuckQueryEnvironment implements QueryEnvironment {
 
   @Override
   public ImmutableSet<QueryTarget> getFileOwners(
-      ImmutableList<String> files,
-      ListeningExecutorService executor) throws InterruptedException, QueryException {
+      ImmutableList<String> files, ListeningExecutorService executor)
+      throws InterruptedException, QueryException {
     try {
       BuildFileTree buildFileTree = Preconditions.checkNotNull(buildFileTrees.get(rootCell));
       OwnersReport report = ownersReportBuilder.build(buildFileTree, executor, files);
@@ -451,9 +485,7 @@ public class BuckQueryEnvironment implements QueryEnvironment {
 
   @Override
   public ImmutableSet<Object> filterAttributeContents(
-      QueryTarget target,
-      String attribute,
-      final Predicate<Object> predicate)
+      QueryTarget target, String attribute, final Predicate<Object> predicate)
       throws QueryException, InterruptedException {
     return QueryTargetAccessor.filterAttributeContents(getNode(target), attribute, predicate);
   }
@@ -462,5 +494,4 @@ public class BuckQueryEnvironment implements QueryEnvironment {
   public Iterable<QueryFunction> getFunctions() {
     return DEFAULT_QUERY_FUNCTIONS;
   }
-
 }

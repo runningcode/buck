@@ -21,12 +21,10 @@ import com.facebook.buck.jvm.java.JavaBuckConfig;
 import com.facebook.buck.util.immutables.BuckStyleImmutable;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-
-import org.immutables.value.Value;
-
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import org.immutables.value.Value;
 
 @Value.Immutable
 @BuckStyleImmutable
@@ -51,7 +49,7 @@ abstract class AbstractIjProjectConfig {
 
   public abstract Optional<String> getIntellijModuleSdkName();
 
-  public abstract ImmutableSet<String> getIntellijSdkTargets();
+  public abstract ImmutableSet<String> getIntellijPluginLabels();
 
   public abstract Optional<String> getJavaModuleSdkName();
 
@@ -63,6 +61,8 @@ abstract class AbstractIjProjectConfig {
 
   public abstract ImmutableMap<String, String> getDepToGeneratedSourcesMap();
 
+  public abstract ImmutableMap<String, String> getLabelToGeneratedSourcesMap();
+
   public abstract Optional<Path> getAndroidManifest();
 
   public abstract boolean isCleanerEnabled();
@@ -71,7 +71,12 @@ abstract class AbstractIjProjectConfig {
 
   public abstract boolean isExcludeArtifactsEnabled();
 
+  public abstract boolean isSkipBuildEnabled();
+
   public abstract AggregationMode getAggregationMode();
 
   public abstract Optional<String> getGeneratedFilesListFilename();
+
+  /** Labels that indicate targets that need to be ignored during project generation. */
+  public abstract ImmutableSet<String> getIgnoredTargetLabels();
 }

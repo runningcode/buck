@@ -1,4 +1,4 @@
-java_library(
+java_immutables_library(
     name = "rules",
     srcs = [
         "AbstractGenruleDescription.java",
@@ -96,11 +96,12 @@ java_immutables_library(
     name = "worker_job_params",
     srcs = [
         "AbstractWorkerJobParams.java",
+        "AbstractWorkerProcessParams.java",
     ],
     visibility = ["PUBLIC"],
 )
 
-java_library(
+java_immutables_library(
     name = "worker",
     srcs = [
         "DefaultWorkerTool.java",

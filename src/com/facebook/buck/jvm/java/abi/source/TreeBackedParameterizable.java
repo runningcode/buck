@@ -17,12 +17,10 @@
 package com.facebook.buck.jvm.java.abi.source;
 
 import com.facebook.buck.util.liteinfersupport.Nullable;
-import com.sun.source.util.TreePath;
-
+import com.sun.source.tree.Tree;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-
 import javax.lang.model.element.Element;
 import javax.lang.model.element.Parameterizable;
 import javax.lang.model.element.TypeParameterElement;
@@ -33,9 +31,9 @@ abstract class TreeBackedParameterizable extends TreeBackedElement implements Pa
   public TreeBackedParameterizable(
       Element underlyingElement,
       TreeBackedElement enclosingElement,
-      @Nullable TreePath path,
+      @Nullable Tree tree,
       TreeBackedElementResolver resolver) {
-    super(underlyingElement, enclosingElement, path, resolver);
+    super(underlyingElement, enclosingElement, tree, resolver);
   }
 
   /* package */ void addTypeParameter(TreeBackedTypeParameterElement typeParameter) {

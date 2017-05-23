@@ -30,13 +30,11 @@ import com.facebook.buck.rules.TargetGraph;
 import com.facebook.buck.rules.args.SourcePathArg;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSortedSet;
-
-import org.junit.Test;
-
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Optional;
+import org.junit.Test;
 
 public class CxxBinaryTest {
 
@@ -56,6 +54,7 @@ public class CxxBinaryTest {
                 CxxPlatformUtils.DEFAULT_PLATFORM.getLd().resolve(ruleResolver),
                 bin,
                 ImmutableList.of(),
+                Optional.empty(),
                 Optional.empty(),
                 /* cacheable */ true,
                 /* thinLto */ false));
@@ -77,5 +76,4 @@ public class CxxBinaryTest {
     ImmutableList<String> command = binary.getExecutableCommand().getCommandPrefix(pathResolver);
     assertTrue(Paths.get(command.get(0)).isAbsolute());
   }
-
 }

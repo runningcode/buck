@@ -18,46 +18,52 @@ package com.facebook.buck.jvm.java.abi;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
-
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import javax.annotation.Nullable;
+import javax.lang.model.SourceVersion;
+import javax.lang.model.element.AnnotationMirror;
+import javax.lang.model.element.AnnotationValue;
+import javax.lang.model.element.Element;
+import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.Modifier;
+import javax.lang.model.element.NestingKind;
+import javax.lang.model.element.TypeElement;
+import javax.lang.model.element.VariableElement;
+import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.TypeKind;
+import javax.lang.model.type.TypeMirror;
+import javax.lang.model.util.ElementScanner8;
+import javax.lang.model.util.Elements;
+import javax.lang.model.util.SimpleAnnotationValueVisitor8;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
-import javax.lang.model.SourceVersion;
-import javax.lang.model.element.AnnotationMirror;
-import javax.lang.model.element.AnnotationValue;
-import javax.lang.model.element.ExecutableElement;
-import javax.lang.model.element.Modifier;
-import javax.lang.model.element.NestingKind;
-import javax.lang.model.element.TypeElement;
-import javax.lang.model.element.VariableElement;
-import javax.lang.model.type.TypeKind;
-import javax.lang.model.type.TypeMirror;
-import javax.lang.model.util.ElementScanner8;
-import javax.lang.model.util.Elements;
-
 class ClassVisitorDriverFromElement {
   private final DescriptorFactory descriptorFactory;
   private final SignatureFactory signatureFactory;
   private final SourceVersion targetVersion;
   private final Elements elements;
+  private final AccessFlags accessFlagsUtils;
 
   /**
    * @param targetVersion the class file version to target, expressed as the corresponding Java
-   *                      source version
+   *     source version
    */
   ClassVisitorDriverFromElement(SourceVersion targetVersion, Elements elements) {
     this.targetVersion = targetVersion;
     this.elements = elements;
     descriptorFactory = new DescriptorFactory(elements);
     signatureFactory = new SignatureFactory(descriptorFactory);
+    accessFlagsUtils = new AccessFlags(elements);
   }
 
   public void driveVisitor(TypeElement fullClass, ClassVisitor visitor) throws IOException {
@@ -65,13 +71,11 @@ class ClassVisitorDriverFromElement {
     visitor.visitEnd();
   }
 
-  /**
-   * Gets the class file version corresponding to the given source version constant.
-   */
+  /** Gets the class file version corresponding to the given source version constant. */
   private static int sourceVersionToClassFileVersion(SourceVersion version) {
     switch (version) {
       case RELEASE_0:
-        return Opcodes.V1_1;  // JVMS8 4.1: 1.0 and 1.1 both support version 45.3 (Opcodes.V1_1)
+        return Opcodes.V1_1; // JVMS8 4.1: 1.0 and 1.1 both support version 45.3 (Opcodes.V1_1)
       case RELEASE_1:
         return Opcodes.V1_1;
       case RELEASE_2:
@@ -99,15 +103,13 @@ class ClassVisitorDriverFromElement {
 
   private class ElementVisitorAdapter extends ElementScanner8<Void, ClassVisitor> {
     boolean classVisitorStarted = false;
-    List<TypeElement> innerMembers = new ArrayList<>();
 
     // TODO(jkeljo): Type annotations
 
     @Override
     public Void visitType(TypeElement e, ClassVisitor visitor) {
       if (classVisitorStarted) {
-        // Collect inner classes/interfaces and visit them at the end
-        innerMembers.add(e);
+        // We'll get inner class references later
         return null;
       }
 
@@ -117,12 +119,17 @@ class ClassVisitorDriverFromElement {
             Preconditions.checkNotNull(elements.getTypeElement("java.lang.Object")).asType();
       }
       // Static never makes it into the file for classes
-      int accessFlags = AccessFlags.getAccessFlags(e) & ~Opcodes.ACC_STATIC;
-      if (e.getNestingKind() != NestingKind.TOP_LEVEL &&
-          e.getModifiers().contains(Modifier.PROTECTED)) {
-        // It looks like inner classes with protected visibility get marked as public, and then
-        // their InnerClasses attributes override that more specifically
-        accessFlags = (accessFlags & ~Opcodes.ACC_PROTECTED) | Opcodes.ACC_PUBLIC;
+      int accessFlags = accessFlagsUtils.getAccessFlags(e) & ~Opcodes.ACC_STATIC;
+      if (e.getNestingKind() != NestingKind.TOP_LEVEL) {
+        if (e.getModifiers().contains(Modifier.PROTECTED)) {
+          // It looks like inner classes with protected visibility get marked as public, and then
+          // their InnerClasses attributes override that more specifically
+          accessFlags = (accessFlags & ~Opcodes.ACC_PROTECTED) | Opcodes.ACC_PUBLIC;
+        } else if (e.getModifiers().contains(Modifier.PRIVATE)) {
+          // It looks like inner classes with private visibility get marked as package, and then
+          // their InnerClasses attributes override that more specifically
+          accessFlags = (accessFlags & ~Opcodes.ACC_PRIVATE);
+        }
       }
 
       visitor.visit(
@@ -131,34 +138,19 @@ class ClassVisitorDriverFromElement {
           descriptorFactory.getInternalName(e),
           signatureFactory.getSignature(e),
           descriptorFactory.getInternalName(superclass),
-          e.getInterfaces().stream()
+          e.getInterfaces()
+              .stream()
               .map(descriptorFactory::getInternalName)
               .toArray(size -> new String[size]));
       classVisitorStarted = true;
-
-      if (e.getNestingKind() == NestingKind.MEMBER) {
-        visitMemberClass(e, visitor);
-      }
 
       visitAnnotations(e.getAnnotationMirrors(), visitor::visitAnnotation);
 
       super.visitType(e, visitor);
 
-      // We visit all inner members in reverse to match the order in original, full jars
-      for (TypeElement element : Lists.reverse(innerMembers)) {
-        visitMemberClass(element, visitor);
-      }
+      reportInnerClassReferences(e, visitor);
 
       return null;
-    }
-
-    private void visitMemberClass(TypeElement e, ClassVisitor visitor) {
-      visitor.visitInnerClass(
-          descriptorFactory.getInternalName(e),
-          descriptorFactory.getInternalName((TypeElement) e.getEnclosingElement()),
-          e.getSimpleName().toString(),
-          AccessFlags.getAccessFlags(e) & ~Opcodes.ACC_SUPER);
-      // We remove ACC_SUPER above because javac does as well for InnerClasses entries.
     }
 
     @Override
@@ -170,18 +162,21 @@ class ClassVisitorDriverFromElement {
       // TODO(jkeljo): Bridge methods: Look at superclasses, then interfaces, checking whether
       // method types change in the new class
 
-      String[] exceptions = e.getThrownTypes().stream()
-          .map(descriptorFactory::getInternalName)
-          .toArray(count -> new String[count]);
+      String[] exceptions =
+          e.getThrownTypes()
+              .stream()
+              .map(descriptorFactory::getInternalName)
+              .toArray(count -> new String[count]);
 
-      MethodVisitor methodVisitor = visitor.visitMethod(
-          AccessFlags.getAccessFlags(e),
-          e.getSimpleName().toString(),
-          descriptorFactory.getDescriptor(e),
-          signatureFactory.getSignature(e),
-          exceptions);
+      MethodVisitor methodVisitor =
+          visitor.visitMethod(
+              accessFlagsUtils.getAccessFlags(e),
+              e.getSimpleName().toString(),
+              descriptorFactory.getDescriptor(e),
+              signatureFactory.getSignature(e),
+              exceptions);
 
-      visitParameters(e.getParameters(), methodVisitor);
+      visitParameters(e.getParameters(), methodVisitor, MoreElements.isInnerClassConstructor(e));
       visitDefaultValue(e, methodVisitor);
       visitAnnotations(e.getAnnotationMirrors(), methodVisitor::visitAnnotation);
       methodVisitor.visitEnd();
@@ -191,7 +186,12 @@ class ClassVisitorDriverFromElement {
 
     private void visitParameters(
         List<? extends VariableElement> parameters,
-        MethodVisitor methodVisitor) {
+        MethodVisitor methodVisitor,
+        boolean isInnerClassConstructor) {
+      if (isInnerClassConstructor) {
+        // ASM uses a fake annotation to indicate synthetic parameters
+        methodVisitor.visitParameterAnnotation(0, "Ljava/lang/Synthetic;", false);
+      }
       for (int i = 0; i < parameters.size(); i++) {
         VariableElement parameter = parameters.get(i);
         for (AnnotationMirror annotationMirror : parameter.getAnnotationMirrors()) {
@@ -201,7 +201,7 @@ class ClassVisitorDriverFromElement {
           visitAnnotationValues(
               annotationMirror,
               methodVisitor.visitParameterAnnotation(
-                  i,
+                  isInnerClassConstructor ? i + 1 : i,
                   descriptorFactory.getDescriptor(annotationMirror.getAnnotationType()),
                   MoreElements.isRuntimeRetention(annotationMirror)));
         }
@@ -215,7 +215,7 @@ class ClassVisitorDriverFromElement {
       }
 
       AnnotationVisitor annotationVisitor = methodVisitor.visitAnnotationDefault();
-      visitAnnotationValue(null, defaultValue.getValue(), annotationVisitor);
+      visitAnnotationValue(null, defaultValue, annotationVisitor);
       annotationVisitor.visitEnd();
     }
 
@@ -225,12 +225,13 @@ class ClassVisitorDriverFromElement {
         return null;
       }
 
-      FieldVisitor fieldVisitor = classVisitor.visitField(
-          AccessFlags.getAccessFlags(e),
-          e.getSimpleName().toString(),
-          descriptorFactory.getDescriptor(e),
-          signatureFactory.getSignature(e),
-          e.getConstantValue());
+      FieldVisitor fieldVisitor =
+          classVisitor.visitField(
+              accessFlagsUtils.getAccessFlags(e),
+              e.getSimpleName().toString(),
+              descriptorFactory.getDescriptor(e),
+              signatureFactory.getSignature(e),
+              e.getConstantValue());
       visitAnnotations(e.getAnnotationMirrors(), fieldVisitor::visitAnnotation);
       fieldVisitor.visitEnd();
 
@@ -238,8 +239,7 @@ class ClassVisitorDriverFromElement {
     }
 
     private void visitAnnotations(
-        List<? extends AnnotationMirror> annotations,
-        VisitorWithAnnotations visitor) {
+        List<? extends AnnotationMirror> annotations, VisitorWithAnnotations visitor) {
       annotations.forEach(annotation -> visitAnnotation(annotation, visitor));
     }
 
@@ -247,107 +247,201 @@ class ClassVisitorDriverFromElement {
       if (MoreElements.isSourceRetention(annotation)) {
         return;
       }
-      AnnotationVisitor annotationVisitor = visitor.visitAnnotation(
-          descriptorFactory.getDescriptor(annotation.getAnnotationType()),
-          MoreElements.isRuntimeRetention(annotation));
+      AnnotationVisitor annotationVisitor =
+          visitor.visitAnnotation(
+              descriptorFactory.getDescriptor(annotation.getAnnotationType()),
+              MoreElements.isRuntimeRetention(annotation));
       visitAnnotationValues(annotation, annotationVisitor);
       annotationVisitor.visitEnd();
     }
 
     private void visitAnnotationValues(
-        AnnotationMirror annotation,
-        AnnotationVisitor annotationVisitor) {
+        AnnotationMirror annotation, AnnotationVisitor annotationVisitor) {
       visitAnnotationValues(annotation.getElementValues(), annotationVisitor);
     }
 
     private void visitAnnotationValues(
         Map<? extends ExecutableElement, ? extends AnnotationValue> elementValues,
         AnnotationVisitor visitor) {
-      elementValues.entrySet().forEach(entry -> visitAnnotationValue(
-          entry.getKey().getSimpleName().toString(),
-          entry.getValue().getValue(),
-          visitor));
+      elementValues
+          .entrySet()
+          .forEach(
+              entry ->
+                  visitAnnotationValue(
+                      entry.getKey().getSimpleName().toString(), entry.getValue(), visitor));
     }
 
     private void visitAnnotationValue(
-        String name,
-        Object value,
-        AnnotationVisitor visitor) {
+        @Nullable String name, AnnotationValue value, AnnotationVisitor visitor) {
+      value.accept(new AnnotationVisitorAdapter(name, visitor), null);
+    }
 
-      if (value instanceof Boolean ||
-          value instanceof Byte ||
-          value instanceof Character ||
-          value instanceof Short ||
-          value instanceof Integer ||
-          value instanceof Long ||
-          value instanceof Float ||
-          value instanceof Double ||
-          value instanceof String) {
-        visitAnnotationPrimitiveValue(name, value, visitor);
-      } else if (value instanceof TypeMirror) {
-        visitAnnotationTypeValue(name, (TypeMirror) value, visitor);
-      } else if (value instanceof VariableElement) {
-        visitAnnotationEnumValue(name, (VariableElement) value, visitor);
-      } else if (value instanceof AnnotationMirror) {
-        visitAnnotationAnnotationValue(name, (AnnotationMirror) value, visitor);
-      } else if (value instanceof List) {
-        @SuppressWarnings("unchecked")  // See docs for AnnotationValue
-        List<? extends AnnotationValue> listValue = (List<? extends AnnotationValue>) value;
-        visitAnnotationArrayValue(name, listValue, visitor);
-      } else {
-        throw new IllegalArgumentException(String.format(
-            "Unexpected annotaiton value type: %s",
-            value.getClass()));
+    private class AnnotationVisitorAdapter extends SimpleAnnotationValueVisitor8<Void, Void> {
+      @Nullable private final String name;
+      private final AnnotationVisitor visitor;
+
+      private AnnotationVisitorAdapter(@Nullable String name, AnnotationVisitor visitor) {
+        this.name = name;
+        this.visitor = visitor;
+      }
+
+      @Override
+      protected Void defaultAction(Object value, Void aVoid) {
+        visitor.visit(name, value);
+        return null;
+      }
+
+      @Override
+      public Void visitType(TypeMirror value, Void aVoid) {
+        visitor.visit(name, descriptorFactory.getType(value));
+        return null;
+      }
+
+      @Override
+      public Void visitEnumConstant(VariableElement value, Void aVoid) {
+        visitor.visitEnum(
+            name,
+            descriptorFactory.getDescriptor(value.getEnclosingElement().asType()),
+            value.getSimpleName().toString());
+        return null;
+      }
+
+      @Override
+      public Void visitAnnotation(AnnotationMirror value, Void aVoid) {
+        AnnotationVisitor annotationValueVisitor =
+            visitor.visitAnnotation(
+                name, descriptorFactory.getDescriptor(value.getAnnotationType()));
+        visitAnnotationValues(value, annotationValueVisitor);
+        annotationValueVisitor.visitEnd();
+        return null;
+      }
+
+      @Override
+      public Void visitArray(List<? extends AnnotationValue> listValue, Void aVoid) {
+        AnnotationVisitor arrayMemberVisitor = visitor.visitArray(name);
+        listValue.forEach(
+            annotationValue -> visitAnnotationValue(null, annotationValue, arrayMemberVisitor));
+        arrayMemberVisitor.visitEnd();
+        return null;
       }
     }
+  }
 
-    private void visitAnnotationPrimitiveValue(
-        String name,
-        Object value,
-        AnnotationVisitor visitor) {
-      visitor.visit(name, value);
+  private void reportInnerClassReferences(TypeElement typeElement, ClassVisitor visitor) {
+    List<TypeElement> enclosingClasses = new ArrayList<>();
+    List<TypeElement> memberClasses = new ArrayList<>();
+    Set<TypeElement> referencesToInners = new HashSet<>();
+
+    TypeElement walker = typeElement;
+    while (walker.getNestingKind() == NestingKind.MEMBER) {
+      enclosingClasses.add(walker);
+      walker = (TypeElement) walker.getEnclosingElement();
     }
 
-    private void visitAnnotationTypeValue(
-        String name,
-        TypeMirror value,
-        AnnotationVisitor visitor) {
-      visitor.visit(name, descriptorFactory.getType(value));
+    ElementScanner8<Void, Void> elementScanner =
+        new ElementScanner8<Void, Void>() {
+          @Override
+          public Void scan(Element e, Void aVoid) {
+            addTypeReferences(e.asType());
+            addTypeReferences(e.getAnnotationMirrors());
+            return super.scan(e, aVoid);
+          }
+
+          @Override
+          public Void visitType(TypeElement e, Void aVoid) {
+            if (e != typeElement && !memberClasses.contains(e)) {
+              memberClasses.add(e);
+            }
+
+            addTypeReferences(e.getSuperclass());
+            e.getInterfaces().forEach(this::addTypeReferences);
+
+            return super.visitType(e, aVoid);
+          }
+
+          private void addTypeReferences(TypeMirror type) {
+            new TypeScanner8<Void, Void>() {
+              @Override
+              public Void scan(@Nullable TypeMirror t, Void aVoid) {
+                if (t == null) {
+                  return null;
+                }
+                return super.scan(t, aVoid);
+              }
+
+              @Override
+              public Void visitDeclared(DeclaredType t, Void aVoid) {
+                TypeElement element = (TypeElement) t.asElement();
+                if (element.getNestingKind() == NestingKind.MEMBER) {
+                  referencesToInners.add(element);
+                  element.getEnclosingElement().asType().accept(this, null);
+                }
+
+                return super.visitDeclared(t, aVoid);
+              }
+            }.scan(type);
+          }
+
+          private void addTypeReferences(List<? extends AnnotationMirror> annotationMirrors) {
+            annotationMirrors.forEach(this::addTypeReferences);
+          }
+
+          private void addTypeReferences(AnnotationMirror annotationMirror) {
+            addTypeReferences(annotationMirror.getAnnotationType());
+            annotationMirror.getElementValues().values().forEach(this::addTypeReferences);
+          }
+
+          private void addTypeReferences(AnnotationValue annotationValue) {
+            new AnnotationValueScanner8<Void, Void>() {
+              @Override
+              public Void visitType(TypeMirror t, Void aVoid) {
+                addTypeReferences(t);
+                return super.visitType(t, aVoid);
+              }
+
+              @Override
+              public Void visitEnumConstant(VariableElement c, Void aVoid) {
+                addTypeReferences(c.asType());
+                return super.visitEnumConstant(c, aVoid);
+              }
+
+              @Override
+              public Void visitAnnotation(AnnotationMirror a, Void aVoid) {
+                addTypeReferences(a.getAnnotationType());
+                return super.visitAnnotation(a, aVoid);
+              }
+            }.scan(annotationValue);
+          }
+        };
+    elementScanner.scan(typeElement);
+
+    for (TypeElement element : Lists.reverse(enclosingClasses)) {
+      visitor.visitInnerClass(
+          descriptorFactory.getInternalName(element),
+          descriptorFactory.getInternalName((TypeElement) element.getEnclosingElement()),
+          element.getSimpleName().toString(),
+          accessFlagsUtils.getAccessFlags(element) & ~Opcodes.ACC_SUPER);
     }
 
-    private void visitAnnotationEnumValue(
-        String name,
-        VariableElement value,
-        AnnotationVisitor visitor) {
-      visitor.visitEnum(
-          name,
-          descriptorFactory.getDescriptor(value.getEnclosingElement().asType()),
-          value.getSimpleName().toString());
+    for (TypeElement element : Lists.reverse(memberClasses)) {
+      elementScanner.scan(element);
+      visitor.visitInnerClass(
+          descriptorFactory.getInternalName(element),
+          descriptorFactory.getInternalName((TypeElement) element.getEnclosingElement()),
+          element.getSimpleName().toString(),
+          accessFlagsUtils.getAccessFlags(element) & ~Opcodes.ACC_SUPER);
     }
 
-    private void visitAnnotationAnnotationValue(
-        String name,
-        AnnotationMirror value,
-        AnnotationVisitor visitor) {
-      AnnotationVisitor annotationValueVisitor = visitor.visitAnnotation(
-          name,
-          descriptorFactory.getDescriptor(value.getAnnotationType()));
-      visitAnnotationValues(
-          value,
-          annotationValueVisitor);
-      annotationValueVisitor.visitEnd();
-    }
-
-    private void visitAnnotationArrayValue(
-        String name,
-        List<? extends AnnotationValue> value,
-        AnnotationVisitor visitor) {
-      AnnotationVisitor arrayMemberVisitor = visitor.visitArray(name);
-      value.forEach(annotationValue -> visitAnnotationValue(
-          null,
-          annotationValue.getValue(),
-          arrayMemberVisitor));
-      arrayMemberVisitor.visitEnd();
-    }
+    referencesToInners
+        .stream()
+        .sorted(Comparator.comparing(e -> e.getQualifiedName().toString()))
+        .forEach(
+            element -> {
+              visitor.visitInnerClass(
+                  descriptorFactory.getInternalName(element),
+                  descriptorFactory.getInternalName((TypeElement) element.getEnclosingElement()),
+                  element.getSimpleName().toString(),
+                  accessFlagsUtils.getAccessFlags(element) & ~Opcodes.ACC_SUPER);
+            });
   }
 }

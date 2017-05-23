@@ -16,14 +16,14 @@
 package com.facebook.buck.ide.intellij.lang.android;
 
 import com.facebook.buck.android.AndroidLibraryDescription;
+import com.facebook.buck.ide.intellij.ModuleBuildContext;
 import com.facebook.buck.ide.intellij.aggregation.AggregationContext;
 import com.facebook.buck.ide.intellij.aggregation.AggregationKeys;
+import com.facebook.buck.ide.intellij.lang.java.JavaLibraryRuleHelper;
 import com.facebook.buck.ide.intellij.model.IjModuleAndroidFacet;
 import com.facebook.buck.ide.intellij.model.IjModuleFactoryResolver;
 import com.facebook.buck.ide.intellij.model.IjModuleType;
 import com.facebook.buck.ide.intellij.model.IjProjectConfig;
-import com.facebook.buck.ide.intellij.ModuleBuildContext;
-import com.facebook.buck.ide.intellij.lang.java.JavaLibraryRuleHelper;
 import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.rules.Description;
 import com.facebook.buck.rules.TargetNode;
@@ -31,8 +31,7 @@ import com.facebook.buck.rules.TargetNode;
 import java.nio.file.Path;
 import java.util.Optional;
 
-public class AndroidLibraryModuleRule
-    extends AndroidModuleRule<AndroidLibraryDescription.Arg> {
+public class AndroidLibraryModuleRule extends AndroidModuleRule<AndroidLibraryDescription.CoreArg> {
 
   public AndroidLibraryModuleRule(
       ProjectFilesystem projectFilesystem,
@@ -47,13 +46,10 @@ public class AndroidLibraryModuleRule
   }
 
   @Override
-  public void apply(TargetNode<AndroidLibraryDescription.Arg, ?> target,
-      ModuleBuildContext context) {
+  public void apply(
+      TargetNode<AndroidLibraryDescription.CoreArg, ?> target, ModuleBuildContext context) {
     super.apply(target, context);
-    addDepsAndSources(
-        target,
-        true /* wantsPackagePrefix */,
-        context);
+    addDepsAndSources(target, true /* wantsPackagePrefix */, context);
     JavaLibraryRuleHelper.addCompiledShadowIfNeeded(projectConfig, target, context);
     Optional<Path> dummyRDotJavaClassPath = moduleFactoryResolver.getDummyRDotJavaPath(target);
     if (dummyRDotJavaClassPath.isPresent()) {
@@ -71,21 +67,19 @@ public class AndroidLibraryModuleRule
 
   @Override
   public void applyDuringAggregation(
-      AggregationContext context, TargetNode<AndroidLibraryDescription.Arg, ?> targetNode) {
+      AggregationContext context, TargetNode<AndroidLibraryDescription.CoreArg, ?> targetNode) {
     super.applyDuringAggregation(context, targetNode);
 
-    Optional<String> languageLevel = JavaLibraryRuleHelper.getLanguageLevel(
-        projectConfig,
-        targetNode);
+    Optional<String> languageLevel =
+        JavaLibraryRuleHelper.getLanguageLevel(projectConfig, targetNode);
     if (languageLevel.isPresent()) {
-      context.addAggregationKey(
-          AggregationKeys.JAVA_LANGUAGE_LEVEL,
-          languageLevel);
+      context.addAggregationKey(AggregationKeys.JAVA_LANGUAGE_LEVEL, languageLevel);
     }
   }
 
   @Override
-  public IjModuleType detectModuleType(TargetNode<AndroidLibraryDescription.Arg, ?> targetNode) {
+  public IjModuleType detectModuleType(
+      TargetNode<AndroidLibraryDescription.CoreArg, ?> targetNode) {
     return IjModuleType.ANDROID_MODULE;
   }
 }

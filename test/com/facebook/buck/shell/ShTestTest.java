@@ -18,9 +18,7 @@ package com.facebook.buck.shell;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
 
-import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.model.BuildTarget;
 import com.facebook.buck.model.BuildTargetFactory;
 import com.facebook.buck.rules.BuildRule;
@@ -32,19 +30,16 @@ import com.facebook.buck.rules.FakeSourcePath;
 import com.facebook.buck.rules.SourcePathResolver;
 import com.facebook.buck.rules.SourcePathRuleFinder;
 import com.facebook.buck.rules.TargetGraph;
-import com.facebook.buck.testutil.FakeProjectFilesystem;
+import com.facebook.buck.rules.args.SourcePathArg;
 import com.facebook.buck.util.MoreCollectors;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
-
+import java.util.Optional;
 import org.easymock.EasyMockSupport;
 import org.junit.After;
 import org.junit.Test;
-
-import java.io.IOException;
-import java.util.Optional;
 
 public class ShTestTest extends EasyMockSupport {
 
@@ -52,35 +47,6 @@ public class ShTestTest extends EasyMockSupport {
   public void tearDown() {
     // I don't understand why EasyMockSupport doesn't do this by default.
     verifyAll();
-  }
-
-  @Test
-  public void testHasTestResultFiles() throws IOException {
-    ProjectFilesystem filesystem = new FakeProjectFilesystem();
-
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(
-        new BuildRuleResolver(
-            TargetGraph.EMPTY,
-            new DefaultTargetNodeToBuildRuleTransformer())
-    );
-    ShTest shTest = new ShTest(
-        new FakeBuildRuleParamsBuilder("//test/com/example:my_sh_test")
-            .setProjectFilesystem(filesystem)
-            .build(),
-        ruleFinder,
-        new FakeSourcePath("run_test.sh"),
-        /* args */ ImmutableList.of(),
-        /* env */ ImmutableMap.of(),
-        /* resources */ ImmutableSortedSet.of(),
-        Optional.empty(),
-        /* runTestSeparately */ false,
-        /* labels */ ImmutableSet.of(),
-        /* contacts */ ImmutableSet.of());
-    filesystem.touch(shTest.getPathToTestOutputResult());
-
-    assertTrue(
-        "hasTestResultFiles() should return true if result.json exists.",
-        shTest.hasTestResultFiles());
   }
 
   @Test
@@ -94,26 +60,23 @@ public class ShTestTest extends EasyMockSupport {
     BuildRule dep = new FakeBuildRule("//:dep", pathResolver);
 
     BuildTarget target = BuildTargetFactory.newInstance("//:rule");
-    ShTest shTest = new ShTest(
-        new FakeBuildRuleParamsBuilder(target)
-            .setDeclaredDeps(ImmutableSortedSet.of(dep))
-            .setExtraDeps(ImmutableSortedSet.of(extraDep))
-            .build(),
-        ruleFinder,
-        new FakeSourcePath("run_test.sh"),
-        /* args */ ImmutableList.of(),
-        /* env */ ImmutableMap.of(),
-        /* resources */ ImmutableSortedSet.of(),
-        Optional.empty(),
-        /* runTestSeparately */ false,
-        /* labels */ ImmutableSet.of(),
-        /* contacts */ ImmutableSet.of());
+    ShTest shTest =
+        new ShTest(
+            new FakeBuildRuleParamsBuilder(target)
+                .setDeclaredDeps(ImmutableSortedSet.of(dep))
+                .setExtraDeps(ImmutableSortedSet.of(extraDep))
+                .build(),
+            ruleFinder,
+            /* args */ ImmutableList.of(SourcePathArg.of(new FakeSourcePath("run_test.sh"))),
+            /* env */ ImmutableMap.of(),
+            /* resources */ ImmutableSortedSet.of(),
+            Optional.empty(),
+            /* runTestSeparately */ false,
+            /* labels */ ImmutableSet.of(),
+            /* contacts */ ImmutableSet.of());
 
     assertThat(
         shTest.getRuntimeDeps().collect(MoreCollectors.toImmutableSet()),
-        containsInAnyOrder(
-            dep.getBuildTarget(),
-            extraDep.getBuildTarget()));
+        containsInAnyOrder(dep.getBuildTarget(), extraDep.getBuildTarget()));
   }
-
 }

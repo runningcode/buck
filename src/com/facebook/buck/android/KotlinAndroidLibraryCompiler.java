@@ -39,7 +39,7 @@ public class KotlinAndroidLibraryCompiler extends AndroidLibraryCompiler {
 
   @Override
   public CompileToJarStepFactory compileToJar(
-      AndroidLibraryDescription.Arg args,
+      AndroidLibraryDescription.CoreArg args,
       JavacOptions javacOptions,
       BuildRuleResolver resolver) {
     return new KotlincToJarStepFactory(

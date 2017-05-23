@@ -25,12 +25,12 @@ import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.model.BuildTarget;
 import com.facebook.buck.model.BuildTargetFactory;
 import com.facebook.buck.parser.NoSuchBuildTargetException;
-import com.facebook.buck.rules.AbstractDescriptionArg;
 import com.facebook.buck.rules.BuildRule;
 import com.facebook.buck.rules.BuildRuleParams;
 import com.facebook.buck.rules.BuildRuleResolver;
 import com.facebook.buck.rules.Cell;
 import com.facebook.buck.rules.CellPathResolver;
+import com.facebook.buck.rules.CommonDescriptionArg;
 import com.facebook.buck.rules.Description;
 import com.facebook.buck.rules.FakeBuildRule;
 import com.facebook.buck.rules.SourcePathResolver;
@@ -42,66 +42,72 @@ import com.facebook.buck.rules.TestCellBuilder;
 import com.facebook.buck.rules.coercer.DefaultTypeCoercerFactory;
 import com.facebook.buck.testutil.FakeProjectFilesystem;
 import com.facebook.buck.util.RichStream;
+import com.facebook.buck.util.immutables.BuckStyleImmutable;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.hash.Hashing;
-
+import java.io.IOException;
+import java.nio.file.Path;
+import org.immutables.value.Value;
+import org.junit.Before;
 import org.junit.Test;
 import org.kohsuke.args4j.CmdLineException;
 
-import java.io.IOException;
-import java.nio.file.Path;
-
-/**
- * Reports targets that own a specified list of files.
- */
+/** Reports targets that own a specified list of files. */
 public class OwnersReportTest {
 
-  public static class FakeRuleDescription implements Description<FakeRuleDescription.FakeArg> {
+  public static class FakeRuleDescription implements Description<FakeRuleDescriptionArg> {
 
     @Override
-    public FakeArg createUnpopulatedConstructorArg() {
-      return new FakeArg();
+    public Class<FakeRuleDescriptionArg> getConstructorArgType() {
+      return FakeRuleDescriptionArg.class;
     }
 
     @Override
-    public <A extends FakeArg> BuildRule createBuildRule(
+    public BuildRule createBuildRule(
         TargetGraph targetGraph,
         BuildRuleParams params,
         BuildRuleResolver resolver,
         CellPathResolver cellRoots,
-        A args) {
+        FakeRuleDescriptionArg args) {
       return new FakeBuildRule(params, new SourcePathResolver(new SourcePathRuleFinder(resolver)));
     }
 
-    public static class FakeArg extends AbstractDescriptionArg {
-      public ImmutableSet<Path> inputs;
+    @BuckStyleImmutable
+    @Value.Immutable
+    interface AbstractFakeRuleDescriptionArg extends CommonDescriptionArg {
+      ImmutableSet<Path> getInputs();
     }
   }
 
-  private ProjectFilesystem filesystem = FakeProjectFilesystem.createJavaOnlyFilesystem();
-
-  private TargetNode<?, ?> createTargetNode(
-      BuildTarget buildTarget,
-      ImmutableSet<Path> inputs) {
-    Description<FakeRuleDescription.FakeArg> description = new FakeRuleDescription();
-    FakeRuleDescription.FakeArg arg = description.createUnpopulatedConstructorArg();
-    arg.inputs = inputs;
+  private TargetNode<?, ?> createTargetNode(BuildTarget buildTarget, ImmutableSet<Path> inputs) {
+    FakeRuleDescription description = new FakeRuleDescription();
+    FakeRuleDescriptionArg arg =
+        FakeRuleDescriptionArg.builder()
+            .setName(buildTarget.getShortName())
+            .setInputs(inputs)
+            .build();
     try {
-      return
-          new TargetNodeFactory(new DefaultTypeCoercerFactory())
-              .create(
-                  Hashing.sha1().hashString(buildTarget.getFullyQualifiedName(), UTF_8),
-                  description,
-                  arg,
-                  filesystem,
-                  buildTarget,
-                  ImmutableSet.of(),
-                  ImmutableSet.of(),
-                  ImmutableSet.of(),
-                  createCellRoots(filesystem));
+      return new TargetNodeFactory(new DefaultTypeCoercerFactory())
+          .create(
+              Hashing.sha1().hashString(buildTarget.getFullyQualifiedName(), UTF_8),
+              description,
+              arg,
+              filesystem,
+              buildTarget,
+              ImmutableSet.of(),
+              ImmutableSet.of(),
+              ImmutableSet.of(),
+              createCellRoots(filesystem));
     } catch (NoSuchBuildTargetException e) {
       throw new RuntimeException(e);
     }
+  }
+
+  private ProjectFilesystem filesystem;
+
+  @Before
+  public void setUp() throws InterruptedException {
+    filesystem = FakeProjectFilesystem.createJavaOnlyFilesystem();
   }
 
   @Test
@@ -111,19 +117,14 @@ public class OwnersReportTest {
     filesystem.mkdirs(filesystem.getPath("com/test/subtest"));
 
     // Inputs that should be treated as "non-files", i.e. as directories
-    ImmutableSet<String> inputs = ImmutableSet.of(
-        "java/somefolder/badfolder",
-        "java/somefolder",
-        "com/test/subtest");
+    ImmutableSet<String> inputs =
+        ImmutableSet.of("java/somefolder/badfolder", "java/somefolder", "com/test/subtest");
 
     BuildTarget target = BuildTargetFactory.newInstance("//base:name");
     TargetNode<?, ?> targetNode = createTargetNode(target, ImmutableSet.of());
 
     Cell cell = new TestCellBuilder().setFilesystem(filesystem).build();
-    OwnersReport report = OwnersReport.generateOwnersReport(
-        cell,
-        targetNode,
-        inputs);
+    OwnersReport report = OwnersReport.generateOwnersReport(cell, targetNode, inputs);
     assertTrue(report.owners.isEmpty());
     assertTrue(report.nonExistentInputs.isEmpty());
     assertTrue(report.inputsWithNoOwners.isEmpty());
@@ -134,10 +135,11 @@ public class OwnersReportTest {
   public void verifyMissingFilesAreCorrectlyReported()
       throws CmdLineException, IOException, InterruptedException {
     // Inputs that should be treated as missing files
-    ImmutableSet<String> inputs = ImmutableSet.of(
-        "java/somefolder/badfolder/somefile.java",
-        "java/somefolder/perfect.java",
-        "com/test/subtest/random.java");
+    ImmutableSet<String> inputs =
+        ImmutableSet.of(
+            "java/somefolder/badfolder/somefile.java",
+            "java/somefolder/perfect.java",
+            "com/test/subtest/random.java");
 
     BuildTarget target = BuildTargetFactory.newInstance("//base:name");
     TargetNode<?, ?> targetNode = createTargetNode(target, ImmutableSet.of());
@@ -154,10 +156,11 @@ public class OwnersReportTest {
   public void verifyInputsWithoutOwnersAreCorrectlyReported()
       throws CmdLineException, IOException, InterruptedException {
     // Inputs that should be treated as existing files
-    ImmutableSet<String> inputs = ImmutableSet.of(
-        "java/somefolder/badfolder/somefile.java",
-        "java/somefolder/perfect.java",
-        "com/test/subtest/random.java");
+    ImmutableSet<String> inputs =
+        ImmutableSet.of(
+            "java/somefolder/badfolder/somefile.java",
+            "java/somefolder/perfect.java",
+            "com/test/subtest/random.java");
     ImmutableSet<Path> inputPaths =
         RichStream.from(inputs).map(filesystem::getPath).toImmutableSet();
 
@@ -182,12 +185,10 @@ public class OwnersReportTest {
   public void verifyInputsAgainstRulesThatListDirectoryInputs()
       throws IOException, InterruptedException {
     // Inputs that should be treated as existing files
-    ImmutableSet<String> inputs = ImmutableSet.of(
-        "java/somefolder/badfolder/somefile.java",
-        "java/somefolder/perfect.java");
+    ImmutableSet<String> inputs =
+        ImmutableSet.of("java/somefolder/badfolder/somefile.java", "java/somefolder/perfect.java");
     ImmutableSet<Path> inputPaths =
         RichStream.from(inputs).map(filesystem::getPath).toImmutableSet();
-
 
     for (Path path : inputPaths) {
       filesystem.mkdirs(path.getParent());
@@ -195,15 +196,11 @@ public class OwnersReportTest {
     }
 
     BuildTarget target = BuildTargetFactory.newInstance("//base:name");
-    TargetNode<?, ?> targetNode = createTargetNode(
-        target,
-        ImmutableSet.of(filesystem.getPath("java/somefolder")));
+    TargetNode<?, ?> targetNode =
+        createTargetNode(target, ImmutableSet.of(filesystem.getPath("java/somefolder")));
 
     Cell cell = new TestCellBuilder().setFilesystem(filesystem).build();
-    OwnersReport report = OwnersReport.generateOwnersReport(
-        cell,
-        targetNode,
-        inputs);
+    OwnersReport report = OwnersReport.generateOwnersReport(cell, targetNode, inputs);
     assertTrue(report.owners.containsKey(targetNode));
     assertEquals(inputPaths, report.owners.get(targetNode));
     assertTrue(report.nonFileInputs.isEmpty());
@@ -211,18 +208,16 @@ public class OwnersReportTest {
     assertTrue(report.inputsWithNoOwners.isEmpty());
   }
 
-  /**
-   * Verify that owners are correctly detected:
-   *  - one owner, multiple inputs
-   */
+  /** Verify that owners are correctly detected: - one owner, multiple inputs */
   @Test
   public void verifyInputsWithOneOwnerAreCorrectlyReported()
       throws CmdLineException, IOException, InterruptedException {
 
-    ImmutableSet<String> inputs = ImmutableSet.of(
-        "java/somefolder/badfolder/somefile.java",
-        "java/somefolder/perfect.java",
-        "com/test/subtest/random.java");
+    ImmutableSet<String> inputs =
+        ImmutableSet.of(
+            "java/somefolder/badfolder/somefile.java",
+            "java/somefolder/perfect.java",
+            "com/test/subtest/random.java");
     ImmutableSet<Path> inputPaths =
         RichStream.from(inputs).map(filesystem::getPath).toImmutableSet();
 
@@ -245,17 +240,15 @@ public class OwnersReportTest {
     assertEquals(targetNode.getInputs(), report.owners.get(targetNode));
   }
 
-  /**
-   * Verify that owners are correctly detected:
-   *  - inputs that belong to multiple targets
-   */
+  /** Verify that owners are correctly detected: - inputs that belong to multiple targets */
   @Test
   public void verifyInputsWithMultipleOwnersAreCorrectlyReported()
       throws CmdLineException, IOException, InterruptedException {
-    ImmutableSet<String> inputs = ImmutableSet.of(
-        "java/somefolder/badfolder/somefile.java",
-        "java/somefolder/perfect.java",
-        "com/test/subtest/random.java");
+    ImmutableSet<String> inputs =
+        ImmutableSet.of(
+            "java/somefolder/badfolder/somefile.java",
+            "java/somefolder/perfect.java",
+            "com/test/subtest/random.java");
     ImmutableSet<Path> inputPaths =
         RichStream.from(inputs).map(filesystem::getPath).toImmutableSet();
 
@@ -271,10 +264,8 @@ public class OwnersReportTest {
 
     Cell cell = new TestCellBuilder().setFilesystem(filesystem).build();
     OwnersReport report = OwnersReport.emptyReport();
-    report = report.updatedWith(
-        OwnersReport.generateOwnersReport(cell, targetNode1, inputs));
-    report = report.updatedWith(
-        OwnersReport.generateOwnersReport(cell, targetNode2, inputs));
+    report = report.updatedWith(OwnersReport.generateOwnersReport(cell, targetNode1, inputs));
+    report = report.updatedWith(OwnersReport.generateOwnersReport(cell, targetNode2, inputs));
 
     assertTrue(report.nonFileInputs.isEmpty());
     assertTrue(report.nonExistentInputs.isEmpty());
@@ -285,5 +276,4 @@ public class OwnersReportTest {
     assertEquals(targetNode1.getInputs(), report.owners.get(targetNode1));
     assertEquals(targetNode2.getInputs(), report.owners.get(targetNode2));
   }
-
 }

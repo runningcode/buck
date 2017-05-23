@@ -12,10 +12,20 @@
     {param content}
 
 {call buck.function}
-{param status: 'UNFROZEN' /}
+{param status: 'FROZEN' /}
 {param overview}
 The <code>get_cell_name()</code> function is used the canonical cell name of the build file
 from within a build file.
+{/param}
+
+{param args}
+
+{call buck.functionArg}
+  {param desc}
+  No arguments.
+  {/param}
+{/call}
+
 {/param}
 
 {/call} // buck.function

@@ -30,28 +30,26 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.io.Files;
 
 /**
- * Description for a scenekit_assets rule, which identifies a assets directory
- * for use with Apple's SceneKit.
+ * Description for a scenekit_assets rule, which identifies a assets directory for use with Apple's
+ * SceneKit.
  */
-public class SceneKitAssetsDescription implements
-    Description<AppleWrapperResourceArg>,
-    Flavored {
+public class SceneKitAssetsDescription implements Description<AppleWrapperResourceArg>, Flavored {
 
   private static final String SCENEKIT_ASSETS_EXTENSION = "scnassets";
 
   @Override
-  public AppleWrapperResourceArg createUnpopulatedConstructorArg() {
-    return new AppleWrapperResourceArg();
+  public Class<AppleWrapperResourceArg> getConstructorArgType() {
+    return AppleWrapperResourceArg.class;
   }
 
   @Override
-  public <A extends AppleWrapperResourceArg> BuildRule createBuildRule(
+  public BuildRule createBuildRule(
       TargetGraph targetGraph,
       BuildRuleParams params,
       BuildRuleResolver resolver,
       CellPathResolver cellRoots,
-      A args) {
-    String extension = Files.getFileExtension(args.path.getFileName().toString());
+      AppleWrapperResourceArg args) {
+    String extension = Files.getFileExtension(args.getPath().getFileName().toString());
     Preconditions.checkArgument(SCENEKIT_ASSETS_EXTENSION.equals(extension));
 
     return new NoopBuildRule(params);

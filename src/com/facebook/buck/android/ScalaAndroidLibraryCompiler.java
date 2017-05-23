@@ -26,11 +26,9 @@ import com.facebook.buck.rules.CellPathResolver;
 import com.facebook.buck.rules.Tool;
 import com.facebook.buck.util.OptionalCompat;
 import com.google.common.collect.ImmutableCollection;
-
 import javax.annotation.Nullable;
 
 public class ScalaAndroidLibraryCompiler extends AndroidLibraryCompiler {
-
   private final ScalaBuckConfig scalaBuckConfig;
   private @Nullable Tool scalac;
 
@@ -52,7 +50,7 @@ public class ScalaAndroidLibraryCompiler extends AndroidLibraryCompiler {
 
   @Override
   public CompileToJarStepFactory compileToJar(
-      AndroidLibraryDescription.Arg arg,
+      AndroidLibraryDescription.CoreArg arg,
       JavacOptions javacOptions,
       BuildRuleResolver resolver) {
 
@@ -60,7 +58,7 @@ public class ScalaAndroidLibraryCompiler extends AndroidLibraryCompiler {
         getScalac(resolver),
         resolver.getRule(scalaBuckConfig.getScalaLibraryTarget()),
         scalaBuckConfig.getCompilerFlags(),
-        arg.extraArguments,
+        arg.getExtraArguments(),
         resolver.getAllRules(scalaBuckConfig.getCompilerPlugins()),
         ANDROID_CLASSPATH_FROM_CONTEXT);
   }
@@ -69,7 +67,7 @@ public class ScalaAndroidLibraryCompiler extends AndroidLibraryCompiler {
   public void findDepsForTargetFromConstructorArgs(
       BuildTarget buildTarget,
       CellPathResolver cellRoots,
-      AndroidLibraryDescription.Arg constructorArg,
+      AndroidLibraryDescription.CoreArg constructorArg,
       ImmutableCollection.Builder<BuildTarget> extraDepsBuilder,
       ImmutableCollection.Builder<BuildTarget> targetGraphOnlyDepsBuilder) {
 

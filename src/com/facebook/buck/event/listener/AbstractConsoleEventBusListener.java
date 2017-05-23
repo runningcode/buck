@@ -28,12 +28,14 @@ import com.facebook.buck.event.CommandEvent;
 import com.facebook.buck.event.ConsoleEvent;
 import com.facebook.buck.event.EventKey;
 import com.facebook.buck.event.InstallEvent;
+import com.facebook.buck.event.NetworkEvent;
 import com.facebook.buck.event.ProjectGenerationEvent;
 import com.facebook.buck.i18n.NumberFormatter;
 import com.facebook.buck.json.ParseBuckFileEvent;
 import com.facebook.buck.json.ProjectBuildFileParseEvents;
 import com.facebook.buck.log.Logger;
 import com.facebook.buck.model.BuildId;
+import com.facebook.buck.model.Pair;
 import com.facebook.buck.parser.ParseEvent;
 import com.facebook.buck.rules.BuildEvent;
 import com.facebook.buck.rules.BuildRuleEvent;
@@ -55,7 +57,6 @@ import com.google.common.collect.Range;
 import com.google.common.collect.RangeSet;
 import com.google.common.collect.TreeRangeSet;
 import com.google.common.eventbus.Subscribe;
-
 import java.io.Closeable;
 import java.io.IOException;
 import java.text.DecimalFormat;
@@ -71,7 +72,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
-
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 
@@ -83,15 +83,16 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
 
   private static final Logger LOG = Logger.get(AbstractConsoleEventBusListener.class);
 
-  private static final NumberFormatter TIME_FORMATTER = new NumberFormatter(
-      locale1 -> {
-        // Yes, this is the only way to apply and localize a pattern to a NumberFormat.
-        NumberFormat numberFormat = NumberFormat.getIntegerInstance(locale1);
-        Preconditions.checkState(numberFormat instanceof DecimalFormat);
-        DecimalFormat decimalFormat = (DecimalFormat) numberFormat;
-        decimalFormat.applyPattern("0.0s");
-        return decimalFormat;
-      });
+  private static final NumberFormatter TIME_FORMATTER =
+      new NumberFormatter(
+          locale1 -> {
+            // Yes, this is the only way to apply and localize a pattern to a NumberFormat.
+            NumberFormat numberFormat = NumberFormat.getIntegerInstance(locale1);
+            Preconditions.checkState(numberFormat instanceof DecimalFormat);
+            DecimalFormat decimalFormat = (DecimalFormat) numberFormat;
+            decimalFormat.applyPattern("0.0s");
+            return decimalFormat;
+          });
 
   protected static final long UNFINISHED_EVENT_PAIR = -1;
   protected final Console console;
@@ -99,21 +100,13 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
   protected final Ansi ansi;
   private final Locale locale;
 
-  @Nullable
-  protected volatile AutoSparseStateEvents.SparseRefreshStarted autoSparseStateSparseRefreshStarted;
-  @Nullable
-  protected volatile AutoSparseStateEvents.SparseRefreshFinished
-      autoSparseStateSparseRefreshFinished;
+  protected ConcurrentHashMap<EventKey, EventPair> autoSparseState;
 
-  @Nullable
-  protected volatile ProjectBuildFileParseEvents.Started projectBuildFileParseStarted;
-  @Nullable
-  protected volatile ProjectBuildFileParseEvents.Finished projectBuildFileParseFinished;
+  @Nullable protected volatile ProjectBuildFileParseEvents.Started projectBuildFileParseStarted;
+  @Nullable protected volatile ProjectBuildFileParseEvents.Finished projectBuildFileParseFinished;
 
-  @Nullable
-  protected volatile ProjectGenerationEvent.Started projectGenerationStarted;
-  @Nullable
-  protected volatile ProjectGenerationEvent.Finished projectGenerationFinished;
+  @Nullable protected volatile ProjectGenerationEvent.Started projectGenerationStarted;
+  @Nullable protected volatile ProjectGenerationEvent.Finished projectGenerationFinished;
 
   protected ConcurrentLinkedDeque<ParseEvent.Started> parseStarted;
   protected ConcurrentLinkedDeque<ParseEvent.Finished> parseFinished;
@@ -123,20 +116,14 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
 
   protected ConcurrentHashMap<EventKey, EventPair> buckFilesProcessing;
 
-  @Nullable
-  protected volatile BuildEvent.Started buildStarted;
-  @Nullable
-  protected volatile BuildEvent.Finished buildFinished;
+  @Nullable protected volatile BuildEvent.Started buildStarted;
+  @Nullable protected volatile BuildEvent.Finished buildFinished;
 
-  @Nullable
-  protected volatile BuildEvent.DistBuildStarted distBuildStarted;
-  @Nullable
-  protected volatile BuildEvent.DistBuildFinished distBuildFinished;
+  @Nullable protected volatile BuildEvent.DistBuildStarted distBuildStarted;
+  @Nullable protected volatile BuildEvent.DistBuildFinished distBuildFinished;
 
-  @Nullable
-  protected volatile InstallEvent.Started installStarted;
-  @Nullable
-  protected volatile InstallEvent.Finished installFinished;
+  @Nullable protected volatile InstallEvent.Started installStarted;
+  @Nullable protected volatile InstallEvent.Finished installFinished;
 
   protected AtomicReference<HttpArtifactCacheEvent.Scheduled> firstHttpCacheUploadScheduled =
       new AtomicReference<>();
@@ -147,8 +134,7 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
   protected final AtomicLong httpArtifactTotalBytesUploaded = new AtomicLong(0);
   protected final AtomicInteger httpArtifactUploadFailedCount = new AtomicInteger(0);
 
-  @Nullable
-  protected volatile HttpArtifactCacheEvent.Shutdown httpShutdownEvent;
+  @Nullable protected volatile HttpArtifactCacheEvent.Shutdown httpShutdownEvent;
 
   protected volatile Optional<Integer> ruleCount = Optional.empty();
   protected Optional<String> publicAnnouncements = Optional.empty();
@@ -166,16 +152,12 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
   protected BuildRuleThreadTracker buildRuleThreadTracker;
 
   protected final Object distBuildStatusLock = new Object();
+
   @GuardedBy("distBuildStatusLock")
   protected Optional<DistBuildStatus> distBuildStatus = Optional.empty();
 
-
   public AbstractConsoleEventBusListener(
-      Console console,
-      Clock clock,
-      Locale locale,
-      ExecutionEnvironment executionEnvironment
-  ) {
+      Console console, Clock clock, Locale locale, ExecutionEnvironment executionEnvironment) {
     this.console = console;
     this.clock = clock;
     this.locale = locale;
@@ -195,8 +177,7 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
 
     this.buckFilesProcessing = new ConcurrentHashMap<>();
 
-    this.autoSparseStateSparseRefreshStarted = null;
-    this.autoSparseStateSparseRefreshFinished = null;
+    this.autoSparseState = new ConcurrentHashMap<>();
 
     this.buildStarted = null;
     this.buildFinished = null;
@@ -260,9 +241,9 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
   public void setPublicAnnouncements(BuckEventBus eventBus, Optional<String> announcements) {
     this.publicAnnouncements = announcements;
     if (announcements.isPresent()) {
-      eventBus.post(ConsoleEvent.createForMessageWithAnsiEscapeCodes(
-          Level.INFO,
-          ansi.asInformationText(announcements.get())));
+      eventBus.post(
+          ConsoleEvent.createForMessageWithAnsiEscapeCodes(
+              Level.INFO, ansi.asInformationText(announcements.get())));
     }
   }
 
@@ -272,19 +253,19 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
 
   /**
    * Filter a list of events and return the subset that fall between the given start and end
-   * timestamps. Preserves ordering if the given iterable was ordered. Will replace event pairs
-   * that straddle the boundary with {@link com.facebook.buck.event.listener.ProxyBuckEvent}
-   * instances, so that the resulting collection is strictly contained within the boundaries.
+   * timestamps. Preserves ordering if the given iterable was ordered. Will replace event pairs that
+   * straddle the boundary with {@link com.facebook.buck.event.listener.ProxyBuckEvent} instances,
+   * so that the resulting collection is strictly contained within the boundaries.
+   *
    * @param start the start timestamp (inclusive)
    * @param end the end timestamp (also inclusive)
    * @param eventPairs the events to filter.
    * @return a list of all events from the given iterable that fall between the given start and end
-   *         times. If an event straddles the given start or end, it will be replaced with a proxy
-   *         event pair that cuts off at exactly the start or end.
+   *     times. If an event straddles the given start or end, it will be replaced with a proxy event
+   *     pair that cuts off at exactly the start or end.
    */
-  protected static Collection<EventPair> getEventsBetween(long start,
-      long end,
-      Iterable<EventPair> eventPairs) {
+  protected static Collection<EventPair> getEventsBetween(
+      long start, long end, Iterable<EventPair> eventPairs) {
     List<EventPair> outEvents = new ArrayList<>();
     for (EventPair ep : eventPairs) {
       long startTime = ep.getStartTime();
@@ -314,17 +295,17 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
    * @param prefix Prefix to print for this event pair.
    * @param suffix Suffix to print for this event pair.
    * @param currentMillis The current time in milliseconds.
-   * @param offsetMs Offset to remove from calculated time.  Set this to a non-zero value if the
-   *     event pair would contain another event.  For example, build time includes parse time, but
-   *     to make the events easier to reason about it makes sense to pull parse time out of build
-   *     time.
+   * @param offsetMs Offset to remove from calculated time. Set this to a non-zero value if the
+   *     event pair would contain another event. For example, build time includes parse time, but to
+   *     make the events easier to reason about it makes sense to pull parse time out of build time.
    * @param startEvent The started event.
    * @param finishedEvent The finished event.
    * @param lines The builder to append lines to.
-   * @return The amount of time between start and finished if finished is present,
-   *    otherwise {@link AbstractConsoleEventBusListener#UNFINISHED_EVENT_PAIR}.
+   * @return The amount of time between start and finished if finished is present, otherwise {@link
+   *     AbstractConsoleEventBusListener#UNFINISHED_EVENT_PAIR}.
    */
-  protected long logEventPair(String prefix,
+  protected long logEventPair(
+      String prefix,
       Optional<String> suffix,
       long currentMillis,
       long offsetMs,
@@ -335,19 +316,14 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
     if (startEvent == null) {
       return UNFINISHED_EVENT_PAIR;
     }
-    EventPair pair = EventPair.builder()
-        .setStart(startEvent)
-        .setFinish(Optional.ofNullable(finishedEvent))
-        .build();
-    return logEventPair(prefix,
-        suffix,
-        currentMillis,
-        offsetMs,
-        ImmutableList.of(pair),
-        progress,
-        lines);
+    EventPair pair =
+        EventPair.builder()
+            .setStart(startEvent)
+            .setFinish(Optional.ofNullable(finishedEvent))
+            .build();
+    return logEventPair(
+        prefix, suffix, currentMillis, offsetMs, ImmutableList.of(pair), progress, lines);
   }
-
 
   /**
    * Adds a line about a the state of cache uploads to lines.
@@ -357,10 +333,10 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
   protected void logHttpCacheUploads(ImmutableList.Builder<String> lines) {
     if (firstHttpCacheUploadScheduled.get() != null) {
       boolean isFinished = httpShutdownEvent != null;
-      lines.add(String.format("[%s] HTTP CACHE UPLOAD...%s%s",
-          isFinished ? "-" : "+",
-          isFinished ? "FINISHED " : "",
-          renderHttpUploads()));
+      lines.add(
+          String.format(
+              "[%s] HTTP CACHE UPLOAD...%s%s",
+              isFinished ? "-" : "+", isFinished ? "FINISHED " : "", renderHttpUploads()));
     }
   }
 
@@ -370,16 +346,16 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
    * @param prefix Prefix to print for this event pair.
    * @param suffix Suffix to print for this event pair.
    * @param currentMillis The current time in milliseconds.
-   * @param offsetMs Offset to remove from calculated time.  Set this to a non-zero value if the
-   *     event pair would contain another event.  For example, build time includes parse time, but
-   *     to make the events easier to reason about it makes sense to pull parse time out of build
-   *     time.
+   * @param offsetMs Offset to remove from calculated time. Set this to a non-zero value if the
+   *     event pair would contain another event. For example, build time includes parse time, but to
+   *     make the events easier to reason about it makes sense to pull parse time out of build time.
    * @param eventPairs the collection of start/end events to sum up when calculating elapsed time.
    * @param lines The builder to append lines to.
    * @return The summed time between start and finished events if each start event has a matching
-   *    finished event, otherwise {@link AbstractConsoleEventBusListener#UNFINISHED_EVENT_PAIR}.
+   *     finished event, otherwise {@link AbstractConsoleEventBusListener#UNFINISHED_EVENT_PAIR}.
    */
-  protected long logEventPair(String prefix,
+  protected long logEventPair(
+      String prefix,
       Optional<String> suffix,
       long currentMillis,
       long offsetMs,
@@ -415,15 +391,16 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
   }
 
   /**
-   * Takes a collection of start and finished events. If there are any events that
-   * have a start, but no finished time, the collection is considered ongoing.
+   * Takes a collection of start and finished events. If there are any events that have a start, but
+   * no finished time, the collection is considered ongoing.
+   *
    * @param eventPairs the collection of event starts/stops.
    * @param currentMillis the current time.
-   * @return -1 if all events are completed, otherwise the time elapsed between the latest
-   *         event and currentMillis.
+   * @return -1 if all events are completed, otherwise the time elapsed between the latest event and
+   *     currentMillis.
    */
-  protected static long getWorkingTimeFromLastStartUntilNow(Collection<EventPair> eventPairs,
-      long currentMillis) {
+  protected static long getWorkingTimeFromLastStartUntilNow(
+      Collection<EventPair> eventPairs, long currentMillis) {
     // We examine all events to determine whether we have any incomplete events and also
     // to get the latest timestamp available (start or stop).
     long latestTimestamp = 0L;
@@ -445,8 +422,9 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
   }
 
   /**
-   * Get the summed elapsed time from all matched event pairs. Does not consider unmatched
-   * event pairs. Pairs are determined by their {@link com.facebook.buck.event.EventKey}.
+   * Get the summed elapsed time from all matched event pairs. Does not consider unmatched event
+   * pairs. Pairs are determined by their {@link com.facebook.buck.event.EventKey}.
+   *
    * @param eventPairs a set of paired events (incomplete events are okay).
    * @return the sum of all times between matched event pairs.
    */
@@ -465,9 +443,7 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
     return totalTime;
   }
 
-  /**
-   * Formats a {@link ConsoleEvent} and adds it to {@code lines}.
-   */
+  /** Formats a {@link ConsoleEvent} and adds it to {@code lines}. */
   protected void formatConsoleEvent(ConsoleEvent logEvent, ImmutableList.Builder<String> lines) {
     if (logEvent.getMessage() == null) {
       LOG.error("Got logEvent with null message");
@@ -491,28 +467,40 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
   @Subscribe
   public void commandStartedEvent(CommandEvent.Started startedEvent) {
     if (progressEstimator.isPresent()) {
-      progressEstimator.get().setCurrentCommand(
-          startedEvent.getCommandName(),
-          startedEvent.getArgs());
+      progressEstimator
+          .get()
+          .setCurrentCommand(startedEvent.getCommandName(), startedEvent.getArgs());
     }
+  }
+
+  public static void aggregateStartedEvent(
+      ConcurrentHashMap<EventKey, EventPair> map, BuckEvent started) {
+    map.compute(
+        started.getEventKey(),
+        (key, pair) ->
+            pair == null ? EventPair.builder().setStart(started).build() : pair.withStart(started));
+  }
+
+  public static void aggregateFinishedEvent(
+      ConcurrentHashMap<EventKey, EventPair> map, BuckEvent finished) {
+    map.compute(
+        finished.getEventKey(),
+        (key, pair) ->
+            pair == null
+                ? EventPair.builder().setFinish(finished).build()
+                : pair.withFinish(finished));
   }
 
   @Subscribe
   public void autoSparseStateSparseRefreshStarted(
       AutoSparseStateEvents.SparseRefreshStarted started) {
-    // we may have to run multiple sparse refreshes (one per cell), at which point the previous
-    // end time is now invalid. Sparse refreshes are always sequentially run.
-    if (autoSparseStateSparseRefreshFinished != null &&
-        !started.isRelatedTo(autoSparseStateSparseRefreshFinished)) {
-      autoSparseStateSparseRefreshFinished = null;
-    }
-    autoSparseStateSparseRefreshStarted = started;
+    aggregateStartedEvent(autoSparseState, started);
   }
 
   @Subscribe
   public void autoSparseStateSparseRefreshFinished(
       AutoSparseStateEvents.SparseRefreshFinished finished) {
-    autoSparseStateSparseRefreshFinished = finished;
+    aggregateFinishedEvent(autoSparseState, finished);
   }
 
   @Subscribe
@@ -549,13 +537,7 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
   @Subscribe
   public void parseStarted(ParseEvent.Started started) {
     parseStarted.add(started);
-    EventKey eventKey = started.getEventKey();
-    if (!buckFilesProcessing.containsKey(eventKey)) {
-      buckFilesProcessing.put(eventKey, EventPair.builder().setStart(started).build());
-    } else {
-      EventPair pair = buckFilesProcessing.get(eventKey);
-      buckFilesProcessing.put(eventKey, pair.withStart(started));
-    }
+    aggregateStartedEvent(buckFilesProcessing, started);
   }
 
   @Subscribe
@@ -571,37 +553,19 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
     if (progressEstimator.isPresent()) {
       progressEstimator.get().didFinishParsing();
     }
-    EventKey eventKey = finished.getEventKey();
-    if (!buckFilesProcessing.containsKey(eventKey)) {
-      buckFilesProcessing.put(eventKey, EventPair.builder().setFinish(finished).build());
-    } else {
-      EventPair pair = buckFilesProcessing.get(eventKey);
-      buckFilesProcessing.put(eventKey, pair.withFinish(finished));
-    }
+    aggregateFinishedEvent(buckFilesProcessing, finished);
   }
 
   @Subscribe
   public void actionGraphStarted(ActionGraphEvent.Started started) {
     actionGraphStarted.add(started);
-    EventKey eventKey = started.getEventKey();
-    if (!buckFilesProcessing.containsKey(eventKey)) {
-      buckFilesProcessing.put(eventKey, EventPair.builder().setStart(started).build());
-    } else {
-      EventPair pair = buckFilesProcessing.get(eventKey);
-      buckFilesProcessing.put(eventKey, pair.withStart(started));
-    }
+    aggregateStartedEvent(buckFilesProcessing, started);
   }
 
   @Subscribe
   public void actionGraphFinished(ActionGraphEvent.Finished finished) {
     actionGraphFinished.add(finished);
-    EventKey eventKey = finished.getEventKey();
-    if (!buckFilesProcessing.containsKey(eventKey)) {
-      buckFilesProcessing.put(eventKey, EventPair.builder().setFinish(finished).build());
-    } else {
-      EventPair pair = buckFilesProcessing.get(eventKey);
-      buckFilesProcessing.put(eventKey, pair.withFinish(finished));
-    }
+    aggregateFinishedEvent(buckFilesProcessing, finished);
   }
 
   @Subscribe
@@ -643,10 +607,7 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
       columns.add(String.format(locale, "%d/%d JOBS", numRulesCompleted.get(), ruleCount.get()));
       CacheRateStatsKeeper.CacheRateStatsUpdateEvent cacheRateStats =
           cacheRateStatsKeeper.getStats();
-      columns.add(String.format(
-          locale,
-          "%d UPDATED",
-          cacheRateStats.getUpdatedRulesCount()));
+      columns.add(String.format(locale, "%d UPDATED", cacheRateStats.getUpdatedRulesCount()));
       if (ruleCount.orElse(0) > 0) {
         columns.add(
             String.format(
@@ -667,6 +628,36 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
     }
 
     return Strings.isNullOrEmpty(jobSummary) ? Optional.empty() : Optional.of(jobSummary);
+  }
+
+  protected String getNetworkStatsLine(@Nullable BuildEvent.Finished finishedEvent) {
+    String parseLine = (finishedEvent != null ? "[-] " : "[+] ") + "DOWNLOADING" + "...";
+    List<String> columns = new ArrayList<>();
+    if (finishedEvent != null) {
+      Pair<Double, SizeUnit> avgDownloadSpeed = networkStatsKeeper.getAverageDownloadSpeed();
+      Pair<Double, SizeUnit> readableSpeed =
+          SizeUnit.getHumanReadableSize(avgDownloadSpeed.getFirst(), avgDownloadSpeed.getSecond());
+      columns.add(
+          String.format(
+              locale, "%s/S " + "AVG", SizeUnit.toHumanReadableString(readableSpeed, locale)));
+    } else {
+      Pair<Double, SizeUnit> downloadSpeed = networkStatsKeeper.getDownloadSpeed();
+      Pair<Double, SizeUnit> readableDownloadSpeed =
+          SizeUnit.getHumanReadableSize(downloadSpeed.getFirst(), downloadSpeed.getSecond());
+      columns.add(
+          String.format(
+              locale, "%s/S", SizeUnit.toHumanReadableString(readableDownloadSpeed, locale)));
+    }
+    Pair<Long, SizeUnit> bytesDownloaded = networkStatsKeeper.getBytesDownloaded();
+    Pair<Double, SizeUnit> readableBytesDownloaded =
+        SizeUnit.getHumanReadableSize(bytesDownloaded.getFirst(), bytesDownloaded.getSecond());
+    columns.add(
+        String.format(
+            locale, "TOTAL: %s", SizeUnit.toHumanReadableString(readableBytesDownloaded, locale)));
+    columns.add(
+        String.format(
+            locale, "%d Artifacts", networkStatsKeeper.getDownloadedArtifactDownloaded()));
+    return parseLine + " " + "(" + Joiner.on(", ").join(columns) + ")";
   }
 
   @Subscribe
@@ -706,7 +697,7 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
   }
 
   @Subscribe
-  public void distBuildStarted(BuildEvent.DistBuildFinished finished) {
+  public void distBuildFinished(BuildEvent.DistBuildFinished finished) {
     distBuildFinished = finished;
   }
 
@@ -798,12 +789,16 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
     }
   }
 
+  @Subscribe
+  public void bytesReceived(NetworkEvent.BytesReceivedEvent bytesReceivedEvent) {
+    networkStatsKeeper.bytesReceived(bytesReceivedEvent);
+  }
+
   protected String renderHttpUploads() {
     long bytesUploaded = httpArtifactTotalBytesUploaded.longValue();
-    String humanReadableBytesUploaded = SizeUnit.toHumanReadableString(
-        SizeUnit.getHumanReadableSize(bytesUploaded, SizeUnit.BYTES),
-        locale
-    );
+    String humanReadableBytesUploaded =
+        SizeUnit.toHumanReadableString(
+            SizeUnit.getHumanReadableSize(bytesUploaded, SizeUnit.BYTES), locale);
     int scheduled = httpArtifactUploadsScheduledCount.get();
     int complete = httpArtifactUploadedCount.get();
     int failed = httpArtifactUploadFailedCount.get();
@@ -811,13 +806,8 @@ public abstract class AbstractConsoleEventBusListener implements BuckEventListen
     int pending = scheduled - (uploading + complete + failed);
     if (scheduled > 0) {
       return String.format(
-            "%s (%d COMPLETE/%d FAILED/%d UPLOADING/%d PENDING)",
-            humanReadableBytesUploaded,
-            complete,
-            failed,
-            uploading,
-            pending
-      );
+          "%s (%d COMPLETE/%d FAILED/%d UPLOADING/%d PENDING)",
+          humanReadableBytesUploaded, complete, failed, uploading, pending);
     } else {
       return humanReadableBytesUploaded;
     }

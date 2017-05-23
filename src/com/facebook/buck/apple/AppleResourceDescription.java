@@ -19,41 +19,38 @@ package com.facebook.buck.apple;
 import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.model.Flavor;
 import com.facebook.buck.model.Flavored;
-import com.facebook.buck.rules.AbstractDescriptionArg;
 import com.facebook.buck.rules.BuildRule;
 import com.facebook.buck.rules.BuildRuleParams;
 import com.facebook.buck.rules.BuildRuleResolver;
 import com.facebook.buck.rules.CellPathResolver;
+import com.facebook.buck.rules.CommonDescriptionArg;
 import com.facebook.buck.rules.Description;
 import com.facebook.buck.rules.NoopBuildRule;
 import com.facebook.buck.rules.SourcePath;
 import com.facebook.buck.rules.TargetGraph;
 import com.facebook.buck.rules.TargetNode;
-import com.facebook.infer.annotation.SuppressFieldNotInitialized;
+import com.facebook.buck.util.immutables.BuckStyleImmutable;
 import com.google.common.collect.ImmutableSet;
+import org.immutables.value.Value;
 
-import java.util.Set;
-
-/**
- * Description for an apple_resource rule which copies resource files to the built bundle.
- */
-public class AppleResourceDescription implements
-    Description<AppleResourceDescription.Arg>,
-    Flavored,
-    HasAppleBundleResourcesDescription<AppleResourceDescription.Arg> {
+/** Description for an apple_resource rule which copies resource files to the built bundle. */
+public class AppleResourceDescription
+    implements Description<AppleResourceDescriptionArg>,
+        Flavored,
+        HasAppleBundleResourcesDescription<AppleResourceDescriptionArg> {
 
   @Override
-  public Arg createUnpopulatedConstructorArg() {
-    return new Arg();
+  public Class<AppleResourceDescriptionArg> getConstructorArgType() {
+    return AppleResourceDescriptionArg.class;
   }
 
   @Override
-  public <A extends Arg> BuildRule createBuildRule(
+  public BuildRule createBuildRule(
       TargetGraph targetGraph,
       BuildRuleParams params,
       BuildRuleResolver resolver,
       CellPathResolver cellRoots,
-      A args) {
+      AppleResourceDescriptionArg args) {
     return new NoopBuildRule(params);
   }
 
@@ -65,19 +62,22 @@ public class AppleResourceDescription implements
   @Override
   public void addAppleBundleResources(
       AppleBundleResources.Builder builder,
-      TargetNode<Arg, ?> targetNode,
+      TargetNode<AppleResourceDescriptionArg, ?> targetNode,
       ProjectFilesystem filesystem,
       BuildRuleResolver resolver) {
-    Arg appleResource = targetNode.getConstructorArg();
-    builder.addAllResourceDirs(appleResource.dirs);
-    builder.addAllResourceFiles(appleResource.files);
-    builder.addAllResourceVariantFiles(appleResource.variants);
+    AppleResourceDescriptionArg appleResource = targetNode.getConstructorArg();
+    builder.addAllResourceDirs(appleResource.getDirs());
+    builder.addAllResourceFiles(appleResource.getFiles());
+    builder.addAllResourceVariantFiles(appleResource.getVariants());
   }
 
-  @SuppressFieldNotInitialized
-  public static class Arg extends AbstractDescriptionArg {
-    public Set<SourcePath> dirs;
-    public Set<SourcePath> files;
-    public Set<SourcePath> variants = ImmutableSet.of();
+  @BuckStyleImmutable
+  @Value.Immutable
+  interface AbstractAppleResourceDescriptionArg extends CommonDescriptionArg {
+    ImmutableSet<SourcePath> getDirs();
+
+    ImmutableSet<SourcePath> getFiles();
+
+    ImmutableSet<SourcePath> getVariants();
   }
 }

@@ -37,7 +37,10 @@ import com.facebook.buck.util.cache.ProjectFileHashCache;
 import com.facebook.buck.util.environment.Platform;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.hash.HashCode;
-
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Map;
 import org.easymock.EasyMock;
 import org.hamcrest.Matchers;
 import org.hamcrest.core.IsCollectionContaining;
@@ -45,22 +48,15 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Map;
-
 public class RecordingFileHashLoaderTest {
-  @Rule
-  public TemporaryFolder projectDir = new TemporaryFolder();
+  @Rule public TemporaryFolder projectDir = new TemporaryFolder();
 
-  @Rule
-  public TemporaryFolder externalDir = new TemporaryFolder();
+  @Rule public TemporaryFolder externalDir = new TemporaryFolder();
 
   private static final HashCode EXAMPLE_HASHCODE = HashCode.fromString("1234");
 
   @Test
-  public void testRecordsDirectSymlinkToFile() throws IOException {
+  public void testRecordsDirectSymlinkToFile() throws InterruptedException, IOException {
     // Scenario:
     // /project/linktoexternal -> /externalDir/externalfile
     // => create direct link: /project/linktoexternal -> /externalDir/externalfile
@@ -75,28 +71,23 @@ public class RecordingFileHashLoaderTest {
 
     RecordedFileHashes recordedFileHashes = new RecordedFileHashes(0);
     BuildJobStateFileHashes fileHashes = recordedFileHashes.getRemoteFileHashes();
-    FakeProjectFileHashCache delegateCache = new FakeProjectFileHashCache(
-        projectFilesystem,
-        ImmutableMap.of(
-            symlinkRelPath,
-            EXAMPLE_HASHCODE));
+    FakeProjectFileHashCache delegateCache =
+        new FakeProjectFileHashCache(
+            projectFilesystem, ImmutableMap.of(symlinkRelPath, EXAMPLE_HASHCODE));
 
-    RecordingProjectFileHashCache recordingLoader = RecordingProjectFileHashCache.createForCellRoot(
-        delegateCache,
-        recordedFileHashes,
-        new DistBuildConfig(FakeBuckConfig.builder().build()));
+    RecordingProjectFileHashCache recordingLoader =
+        RecordingProjectFileHashCache.createForCellRoot(
+            delegateCache,
+            recordedFileHashes,
+            new DistBuildConfig(FakeBuckConfig.builder().build()));
 
     recordingLoader.get(symlinkRelPath);
 
-    assertThat(
-        fileHashes.getEntries().size(),
-        Matchers.equalTo(1));
+    assertThat(fileHashes.getEntries().size(), Matchers.equalTo(1));
 
     BuildJobStateFileHashEntry fileHashEntry = fileHashes.getEntries().get(0);
     assertTrue(fileHashEntry.isSetRootSymLink());
-    assertThat(
-        fileHashEntry.getRootSymLink(),
-        Matchers.equalTo((unixPath("linktoexternal"))));
+    assertThat(fileHashEntry.getRootSymLink(), Matchers.equalTo((unixPath("linktoexternal"))));
     assertTrue(fileHashEntry.isSetRootSymLink());
     assertThat(
         fileHashEntry.getRootSymLinkTarget(),
@@ -104,7 +95,8 @@ public class RecordingFileHashLoaderTest {
   }
 
   @Test
-  public void testRecordsSymlinkToFileWithinExternalDirectory() throws IOException {
+  public void testRecordsSymlinkToFileWithinExternalDirectory()
+      throws InterruptedException, IOException {
     assumeTrue(!Platform.detect().equals(Platform.WINDOWS));
 
     // Scenario:
@@ -115,34 +107,29 @@ public class RecordingFileHashLoaderTest {
     externalDir.newFile("externalfile");
     Path symlinkRoot = projectDir.getRoot().toPath().resolve("linktoexternaldir");
     Files.createSymbolicLink(symlinkRoot, externalDir.getRoot().toPath());
-    Path symlink = projectFilesystem.relativize(symlinkRoot.resolve(
-        "externalfile")); // /project/linktoexternaldir/externalfile
+    Path symlink =
+        projectFilesystem.relativize(
+            symlinkRoot.resolve("externalfile")); // /project/linktoexternaldir/externalfile
 
     RecordedFileHashes recordedFileHashes = new RecordedFileHashes(0);
     BuildJobStateFileHashes fileHashes = recordedFileHashes.getRemoteFileHashes();
 
-    FakeProjectFileHashCache delegateCache = new FakeProjectFileHashCache(
-        projectFilesystem,
-        ImmutableMap.of(
-            symlink,
-            EXAMPLE_HASHCODE));
+    FakeProjectFileHashCache delegateCache =
+        new FakeProjectFileHashCache(projectFilesystem, ImmutableMap.of(symlink, EXAMPLE_HASHCODE));
 
-    RecordingProjectFileHashCache recordingLoader = RecordingProjectFileHashCache.createForCellRoot(
-        delegateCache,
-        recordedFileHashes,
-        new DistBuildConfig(FakeBuckConfig.builder().build()));
+    RecordingProjectFileHashCache recordingLoader =
+        RecordingProjectFileHashCache.createForCellRoot(
+            delegateCache,
+            recordedFileHashes,
+            new DistBuildConfig(FakeBuckConfig.builder().build()));
 
     recordingLoader.get(symlink);
 
-    assertThat(
-        fileHashes.getEntries().size(),
-        Matchers.equalTo(1));
+    assertThat(fileHashes.getEntries().size(), Matchers.equalTo(1));
 
     BuildJobStateFileHashEntry fileHashEntry = fileHashes.getEntries().get(0);
     assertTrue(fileHashEntry.isSetRootSymLink());
-    assertThat(
-        fileHashEntry.getRootSymLink(),
-        Matchers.equalTo((unixPath("linktoexternaldir"))));
+    assertThat(fileHashEntry.getRootSymLink(), Matchers.equalTo((unixPath("linktoexternaldir"))));
     assertTrue(fileHashEntry.isSetRootSymLink());
     assertThat(
         fileHashEntry.getRootSymLinkTarget(),
@@ -150,7 +137,8 @@ public class RecordingFileHashLoaderTest {
   }
 
   @Test
-  public void testRecordsDirectoryAndRecursivelyRecordsChildren() throws IOException {
+  public void testRecordsDirectoryAndRecursivelyRecordsChildren()
+      throws InterruptedException, IOException {
     // Scenario:
     // /a - folder
     // /a/b - folder
@@ -172,30 +160,29 @@ public class RecordingFileHashLoaderTest {
     RecordedFileHashes recordedFileHashes = new RecordedFileHashes(0);
     BuildJobStateFileHashes fileHashes = recordedFileHashes.getRemoteFileHashes();
 
-    ProjectFileHashCache delegateCacheMock = EasyMock.createMock(
-        ProjectFileHashCache.class);
+    ProjectFileHashCache delegateCacheMock = EasyMock.createMock(ProjectFileHashCache.class);
     expect(delegateCacheMock.getFilesystem()).andReturn(fs);
-    expect(
-        delegateCacheMock.get(anyObject(Path.class))).andReturn(EXAMPLE_HASHCODE).anyTimes();
+    expect(delegateCacheMock.get(anyObject(Path.class))).andReturn(EXAMPLE_HASHCODE).anyTimes();
     replay(delegateCacheMock);
 
-    RecordingProjectFileHashCache recordingLoader = RecordingProjectFileHashCache.createForCellRoot(
-        delegateCacheMock,
-        recordedFileHashes,
-        new DistBuildConfig(FakeBuckConfig.builder().build()));
+    RecordingProjectFileHashCache recordingLoader =
+        RecordingProjectFileHashCache.createForCellRoot(
+            delegateCacheMock,
+            recordedFileHashes,
+            new DistBuildConfig(FakeBuckConfig.builder().build()));
 
     recordingLoader.get(fs.relativize(pathDirA));
 
-    assertThat(
-        fileHashes.getEntries().size(),
-        Matchers.equalTo(5)); // all folders and files
+    assertThat(fileHashes.getEntries().size(), Matchers.equalTo(5)); // all folders and files
 
-    assertThat(fileHashes.getEntries(), IsCollectionContaining.hasItems(
-        new FileHashEntryMatcher("a", true),
-        new FileHashEntryMatcher("a/b", true),
-        new FileHashEntryMatcher("a/b/c", false),
-        new FileHashEntryMatcher("a/b/d", true),
-        new FileHashEntryMatcher("a/e", false)));
+    assertThat(
+        fileHashes.getEntries(),
+        IsCollectionContaining.hasItems(
+            new FileHashEntryMatcher("a", true),
+            new FileHashEntryMatcher("a/b", true),
+            new FileHashEntryMatcher("a/b/c", false),
+            new FileHashEntryMatcher("a/b/d", true),
+            new FileHashEntryMatcher("a/e", false)));
   }
 
   private static PathWithUnixSeparators unixPath(String path) {
@@ -224,5 +211,4 @@ public class RecordingFileHashLoaderTest {
       return null;
     }
   }
-
 }

@@ -26,7 +26,6 @@ import com.facebook.buck.util.cache.FileHashCacheVerificationResult;
 import com.facebook.buck.util.cache.ProjectFileHashCache;
 import com.google.common.base.Preconditions;
 import com.google.common.hash.HashCode;
-
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -53,23 +52,28 @@ class MaterializerProjectFileHashCache implements ProjectFileHashCache {
       BuildJobStateFileHashes remoteFileHashes,
       FileContentsProvider provider) {
     this.delegate = delegate;
-    this.remoteFileHashesByAbsPath = DistBuildFileHashes.indexEntriesByPath(
-        delegate.getFilesystem(),
-        remoteFileHashes);
+    this.remoteFileHashesByAbsPath =
+        DistBuildFileHashes.indexEntriesByPath(delegate.getFilesystem(), remoteFileHashes);
     this.symlinkedPaths = Collections.newSetFromMap(new ConcurrentHashMap<Path, Boolean>());
     this.materializedPaths = Collections.newSetFromMap(new ConcurrentHashMap<Path, Boolean>());
     this.provider = provider;
     this.projectFilesystem = delegate.getFilesystem();
   }
 
+  /**
+   * This method creates all symlinks and touches all regular files so that any file existence
+   * checks during action graph transformation go through (for instance,
+   * PrebuiltCxxLibraryDescription::requireSharedLibrary). Note: THIS IS A HACK. And this needs to
+   * be here until the misbehaving rules are fixed.
+   */
   public void preloadAllFiles() throws IOException {
     for (Path absPath : remoteFileHashesByAbsPath.keySet()) {
       LOG.info("Preloading: [%s]", absPath.toString());
       BuildJobStateFileHashEntry fileHashEntry = remoteFileHashesByAbsPath.get(absPath);
       if (fileHashEntry == null || fileHashEntry.isPathIsAbsolute()) {
         continue;
-      } else if (fileHashEntry.isSetMaterializeDuringPreloading() &&
-          fileHashEntry.isMaterializeDuringPreloading()) {
+      } else if (fileHashEntry.isSetMaterializeDuringPreloading()
+          && fileHashEntry.isMaterializeDuringPreloading()) {
         Path relPath = projectFilesystem.getPathRelativeToProjectRoot(absPath).get();
         get(relPath);
       } else if (fileHashEntry.isSetRootSymLink()) {
@@ -140,9 +144,8 @@ class MaterializerProjectFileHashCache implements ProjectFileHashCache {
   }
 
   private synchronized void materializeDirectory(
-      Path path,
-      BuildJobStateFileHashEntry fileHashEntry,
-      Queue<Path> remainingPaths) throws IOException {
+      Path path, BuildJobStateFileHashEntry fileHashEntry, Queue<Path> remainingPaths)
+      throws IOException {
     if (materializedPaths.contains(path)) {
       return;
     }
@@ -162,11 +165,10 @@ class MaterializerProjectFileHashCache implements ProjectFileHashCache {
     Path symlinkRelPath = projectFilesystem.getPathRelativeToProjectRoot(symlinkAbsPath).get();
     HashCode actualHash = delegate.get(symlinkRelPath);
     if (!expectedHash.equals(actualHash)) {
-      throw new RuntimeException(String.format(
-          "Symlink [%s] had hashcode [%s] during scheduling, but [%s] during build.",
-          symlinkAbsPath,
-          expectedHash,
-          actualHash));
+      throw new RuntimeException(
+          String.format(
+              "Symlink [%s] had hashcode [%s] during scheduling, but [%s] during build.",
+              symlinkAbsPath, expectedHash, actualHash));
     }
   }
 
@@ -193,15 +195,11 @@ class MaterializerProjectFileHashCache implements ProjectFileHashCache {
         projectFilesystem.resolve(fileHashEntry.getRootSymLinkTarget().getPath());
     LOG.info(
         "Materializing sym link [%s] with target [%s]",
-        rootSymlink.toAbsolutePath().toString(),
-        rootSymlinkTarget.toAbsolutePath().toString());
+        rootSymlink.toAbsolutePath().toString(), rootSymlinkTarget.toAbsolutePath().toString());
 
     try {
       projectFilesystem.createParentDirs(rootSymlink);
-      projectFilesystem.createSymLink(
-          rootSymlink,
-          rootSymlinkTarget,
-          true /* force creation */);
+      projectFilesystem.createSymLink(rootSymlink, rootSymlinkTarget, true /* force creation */);
     } catch (IOException e) {
       LOG.error(e);
       throw new RuntimeException(e);

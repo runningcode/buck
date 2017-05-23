@@ -19,9 +19,9 @@ package com.facebook.buck.apple.project_generator;
 import com.dd.plist.NSArray;
 import com.dd.plist.NSDictionary;
 import com.dd.plist.NSString;
-import com.facebook.buck.apple.AppleAssetCatalogDescription;
+import com.facebook.buck.apple.AppleAssetCatalogDescriptionArg;
 import com.facebook.buck.apple.AppleHeaderVisibilities;
-import com.facebook.buck.apple.AppleResourceDescription;
+import com.facebook.buck.apple.AppleResourceDescriptionArg;
 import com.facebook.buck.apple.AppleWrapperResourceArg;
 import com.facebook.buck.apple.GroupedSource;
 import com.facebook.buck.apple.RuleUtils;
@@ -46,9 +46,10 @@ import com.facebook.buck.apple.xcode.xcodeproj.SourceTreePath;
 import com.facebook.buck.cxx.CxxSource;
 import com.facebook.buck.cxx.HeaderVisibility;
 import com.facebook.buck.io.ProjectFilesystem;
+import com.facebook.buck.js.CoreReactNativeLibraryArg;
 import com.facebook.buck.js.IosReactNativeLibraryDescription;
 import com.facebook.buck.js.ReactNativeBundle;
-import com.facebook.buck.js.ReactNativeLibraryArgs;
+import com.facebook.buck.js.ReactNativeLibraryArg;
 import com.facebook.buck.log.Logger;
 import com.facebook.buck.model.BuildTarget;
 import com.facebook.buck.rules.SourcePath;
@@ -67,9 +68,6 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.io.Files;
 import com.google.common.io.Resources;
-
-import org.stringtemplate.v4.ST;
-
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -80,6 +78,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
+import org.stringtemplate.v4.ST;
 
 /**
  * Configures a PBXProject by adding a PBXNativeTarget and its associated dependencies into a
@@ -120,18 +119,17 @@ class NewNativeTargetProjectMutator {
   private Optional<SourcePath> bridgingHeader = Optional.empty();
   private ImmutableSet<FrameworkPath> frameworks = ImmutableSet.of();
   private ImmutableSet<PBXFileReference> archives = ImmutableSet.of();
-  private ImmutableSet<AppleResourceDescription.Arg> recursiveResources = ImmutableSet.of();
-  private ImmutableSet<AppleResourceDescription.Arg> directResources = ImmutableSet.of();
-  private ImmutableSet<AppleAssetCatalogDescription.Arg> recursiveAssetCatalogs = ImmutableSet.of();
-  private ImmutableSet<AppleAssetCatalogDescription.Arg> directAssetCatalogs = ImmutableSet.of();
+  private ImmutableSet<AppleResourceDescriptionArg> recursiveResources = ImmutableSet.of();
+  private ImmutableSet<AppleResourceDescriptionArg> directResources = ImmutableSet.of();
+  private ImmutableSet<AppleAssetCatalogDescriptionArg> recursiveAssetCatalogs = ImmutableSet.of();
+  private ImmutableSet<AppleAssetCatalogDescriptionArg> directAssetCatalogs = ImmutableSet.of();
   private ImmutableSet<AppleWrapperResourceArg> wrapperResources = ImmutableSet.of();
   private Iterable<PBXShellScriptBuildPhase> preBuildRunScriptPhases = ImmutableList.of();
   private Iterable<PBXBuildPhase> copyFilesPhases = ImmutableList.of();
   private Iterable<PBXShellScriptBuildPhase> postBuildRunScriptPhases = ImmutableList.of();
 
   public NewNativeTargetProjectMutator(
-      PathRelativizer pathRelativizer,
-      Function<SourcePath, Path> sourcePathResolver) {
+      PathRelativizer pathRelativizer, Function<SourcePath, Path> sourcePathResolver) {
     this.pathRelativizer = pathRelativizer;
     this.sourcePathResolver = sourcePathResolver;
   }
@@ -139,14 +137,12 @@ class NewNativeTargetProjectMutator {
   /**
    * Set product related configuration.
    *
-   * @param productType       declared product type
-   * @param productName       product display name
+   * @param productType declared product type
+   * @param productName product display name
    * @param productOutputPath build output relative product path.
    */
   public NewNativeTargetProjectMutator setProduct(
-      ProductType productType,
-      String productName,
-      Path productOutputPath) {
+      ProductType productType, String productName, Path productOutputPath) {
     this.productName = productName;
     this.productType = productType;
     this.productOutputPath = productOutputPath;
@@ -174,32 +170,27 @@ class NewNativeTargetProjectMutator {
     return this;
   }
 
-  public NewNativeTargetProjectMutator setSourcesWithFlags(
-      Set<SourceWithFlags> sourcesWithFlags) {
+  public NewNativeTargetProjectMutator setSourcesWithFlags(Set<SourceWithFlags> sourcesWithFlags) {
     this.sourcesWithFlags = ImmutableSet.copyOf(sourcesWithFlags);
     return this;
   }
 
-  public NewNativeTargetProjectMutator setExtraXcodeSources(
-      Set<SourcePath> extraXcodeSources) {
+  public NewNativeTargetProjectMutator setExtraXcodeSources(Set<SourcePath> extraXcodeSources) {
     this.extraXcodeSources = ImmutableSet.copyOf(extraXcodeSources);
     return this;
   }
 
-  public NewNativeTargetProjectMutator setExtraXcodeFiles(
-      Set<SourcePath> extraXcodeFiles) {
+  public NewNativeTargetProjectMutator setExtraXcodeFiles(Set<SourcePath> extraXcodeFiles) {
     this.extraXcodeFiles = ImmutableSet.copyOf(extraXcodeFiles);
     return this;
   }
 
-  public NewNativeTargetProjectMutator setPublicHeaders(
-      Set<SourcePath> publicHeaders) {
+  public NewNativeTargetProjectMutator setPublicHeaders(Set<SourcePath> publicHeaders) {
     this.publicHeaders = ImmutableSet.copyOf(publicHeaders);
     return this;
   }
 
-  public NewNativeTargetProjectMutator setPrivateHeaders(
-      Set<SourcePath> privateHeaders) {
+  public NewNativeTargetProjectMutator setPrivateHeaders(Set<SourcePath> privateHeaders) {
     this.privateHeaders = ImmutableSet.copyOf(privateHeaders);
     return this;
   }
@@ -230,13 +221,13 @@ class NewNativeTargetProjectMutator {
   }
 
   public NewNativeTargetProjectMutator setRecursiveResources(
-      Set<AppleResourceDescription.Arg> recursiveResources) {
+      Set<AppleResourceDescriptionArg> recursiveResources) {
     this.recursiveResources = ImmutableSet.copyOf(recursiveResources);
     return this;
   }
 
   public NewNativeTargetProjectMutator setDirectResources(
-      ImmutableSet<AppleResourceDescription.Arg> directResources) {
+      ImmutableSet<AppleResourceDescriptionArg> directResources) {
     this.directResources = directResources;
     return this;
   }
@@ -272,19 +263,17 @@ class NewNativeTargetProjectMutator {
 
   /**
    * @param recursiveAssetCatalogs List of asset catalog targets of targetNode and dependencies of
-   *                               targetNode.
+   *     targetNode.
    */
   public NewNativeTargetProjectMutator setRecursiveAssetCatalogs(
-      Set<AppleAssetCatalogDescription.Arg> recursiveAssetCatalogs) {
+      Set<AppleAssetCatalogDescriptionArg> recursiveAssetCatalogs) {
     this.recursiveAssetCatalogs = ImmutableSet.copyOf(recursiveAssetCatalogs);
     return this;
   }
 
-  /**
-   * @param directAssetCatalogs List of asset catalog targets targetNode directly depends on
-   */
+  /** @param directAssetCatalogs List of asset catalog targets targetNode directly depends on */
   public NewNativeTargetProjectMutator setDirectAssetCatalogs(
-      Set<AppleAssetCatalogDescription.Arg> directAssetCatalogs) {
+      Set<AppleAssetCatalogDescriptionArg> directAssetCatalogs) {
     this.directAssetCatalogs = ImmutableSet.copyOf(directAssetCatalogs);
     return this;
   }
@@ -315,11 +304,10 @@ class NewNativeTargetProjectMutator {
     // Product
 
     PBXGroup productsGroup = project.getMainGroup().getOrCreateChildGroupByName("Products");
-    PBXFileReference productReference = productsGroup.getOrCreateFileReferenceBySourceTreePath(
-        new SourceTreePath(
-            PBXReference.SourceTree.BUILT_PRODUCTS_DIR,
-            productOutputPath,
-            Optional.empty()));
+    PBXFileReference productReference =
+        productsGroup.getOrCreateFileReferenceBySourceTreePath(
+            new SourceTreePath(
+                PBXReference.SourceTree.BUILT_PRODUCTS_DIR, productOutputPath, Optional.empty()));
     target.setProductName(productName);
     target.setProductReference(productReference);
     target.setProductType(productType);
@@ -348,26 +336,29 @@ class NewNativeTargetProjectMutator {
             privateHeaders));
 
     if (prefixHeader.isPresent()) {
-      SourceTreePath prefixHeaderSourceTreePath = new SourceTreePath(
-          PBXReference.SourceTree.GROUP,
-          pathRelativizer.outputPathToSourcePath(prefixHeader.get()),
-          Optional.empty());
+      SourceTreePath prefixHeaderSourceTreePath =
+          new SourceTreePath(
+              PBXReference.SourceTree.GROUP,
+              pathRelativizer.outputPathToSourcePath(prefixHeader.get()),
+              Optional.empty());
       sourcesGroup.getOrCreateFileReferenceBySourceTreePath(prefixHeaderSourceTreePath);
     }
 
     if (infoPlist.isPresent()) {
-      SourceTreePath infoPlistSourceTreePath = new SourceTreePath(
-          PBXReference.SourceTree.GROUP,
-          pathRelativizer.outputPathToSourcePath(infoPlist.get()),
-          Optional.empty());
+      SourceTreePath infoPlistSourceTreePath =
+          new SourceTreePath(
+              PBXReference.SourceTree.GROUP,
+              pathRelativizer.outputPathToSourcePath(infoPlist.get()),
+              Optional.empty());
       sourcesGroup.getOrCreateFileReferenceBySourceTreePath(infoPlistSourceTreePath);
     }
 
     if (bridgingHeader.isPresent()) {
-      SourceTreePath bridgingHeaderSourceTreePath = new SourceTreePath(
-          PBXReference.SourceTree.GROUP,
-          pathRelativizer.outputPathToSourcePath(bridgingHeader.get()),
-          Optional.empty());
+      SourceTreePath bridgingHeaderSourceTreePath =
+          new SourceTreePath(
+              PBXReference.SourceTree.GROUP,
+              pathRelativizer.outputPathToSourcePath(bridgingHeader.get()),
+              Optional.empty());
       sourcesGroup.getOrCreateFileReferenceBySourceTreePath(bridgingHeaderSourceTreePath);
     }
 
@@ -384,57 +375,44 @@ class NewNativeTargetProjectMutator {
       final PBXSourcesBuildPhase sourcesBuildPhase,
       final PBXHeadersBuildPhase headersBuildPhase,
       Iterable<GroupedSource> groupedSources) {
-    GroupedSource.Visitor visitor = new GroupedSource.Visitor() {
-      @Override
-      public void visitSourceWithFlags(SourceWithFlags sourceWithFlags) {
-        addSourcePathToSourcesBuildPhase(
-            sourceWithFlags,
-            sourcesGroup,
-            sourcesBuildPhase);
-      }
+    GroupedSource.Visitor visitor =
+        new GroupedSource.Visitor() {
+          @Override
+          public void visitSourceWithFlags(SourceWithFlags sourceWithFlags) {
+            addSourcePathToSourcesBuildPhase(sourceWithFlags, sourcesGroup, sourcesBuildPhase);
+          }
 
-      @Override
-      public void visitIgnoredSource(SourcePath source) {
-        addSourcePathToSourceTree(
-            source,
-            sourcesGroup);
-      }
+          @Override
+          public void visitIgnoredSource(SourcePath source) {
+            addSourcePathToSourceTree(source, sourcesGroup);
+          }
 
-      @Override
-      public void visitPublicHeader(SourcePath publicHeader) {
-        addSourcePathToHeadersBuildPhase(
-            publicHeader,
-            sourcesGroup,
-            headersBuildPhase,
-            HeaderVisibility.PUBLIC);
-      }
+          @Override
+          public void visitPublicHeader(SourcePath publicHeader) {
+            addSourcePathToHeadersBuildPhase(
+                publicHeader, sourcesGroup, headersBuildPhase, HeaderVisibility.PUBLIC);
+          }
 
-      @Override
-      public void visitPrivateHeader(SourcePath privateHeader) {
-        addSourcePathToHeadersBuildPhase(
-            privateHeader,
-            sourcesGroup,
-            headersBuildPhase,
-            HeaderVisibility.PRIVATE);
-      }
+          @Override
+          public void visitPrivateHeader(SourcePath privateHeader) {
+            addSourcePathToHeadersBuildPhase(
+                privateHeader, sourcesGroup, headersBuildPhase, HeaderVisibility.PRIVATE);
+          }
 
-      @Override
-      public void visitSourceGroup(
-          String sourceGroupName,
-          Path sourceGroupPathRelativeToTarget,
-          List<GroupedSource> sourceGroup) {
-        PBXGroup newSourceGroup = sourcesGroup.getOrCreateChildGroupByName(sourceGroupName);
-        newSourceGroup.setSourceTree(PBXReference.SourceTree.SOURCE_ROOT);
-        newSourceGroup.setPath(sourceGroupPathRelativeToTarget.toString());
-        // Sources groups stay in the order in which they're in the GroupedSource.
-        newSourceGroup.setSortPolicy(PBXGroup.SortPolicy.UNSORTED);
-        traverseGroupsTreeAndHandleSources(
-            newSourceGroup,
-            sourcesBuildPhase,
-            headersBuildPhase,
-            sourceGroup);
-      }
-    };
+          @Override
+          public void visitSourceGroup(
+              String sourceGroupName,
+              Path sourceGroupPathRelativeToTarget,
+              List<GroupedSource> sourceGroup) {
+            PBXGroup newSourceGroup = sourcesGroup.getOrCreateChildGroupByName(sourceGroupName);
+            newSourceGroup.setSourceTree(PBXReference.SourceTree.SOURCE_ROOT);
+            newSourceGroup.setPath(sourceGroupPathRelativeToTarget.toString());
+            // Sources groups stay in the order in which they're in the GroupedSource.
+            newSourceGroup.setSortPolicy(PBXGroup.SortPolicy.UNSORTED);
+            traverseGroupsTreeAndHandleSources(
+                newSourceGroup, sourcesBuildPhase, headersBuildPhase, sourceGroup);
+          }
+        };
     for (GroupedSource groupedSource : groupedSources) {
       groupedSource.visit(visitor);
     }
@@ -444,27 +422,27 @@ class NewNativeTargetProjectMutator {
       SourceWithFlags sourceWithFlags,
       PBXGroup sourcesGroup,
       PBXSourcesBuildPhase sourcesBuildPhase) {
-    SourceTreePath sourceTreePath = new SourceTreePath(
-        PBXReference.SourceTree.SOURCE_ROOT,
-        pathRelativizer.outputDirToRootRelative(
-            sourcePathResolver.apply(sourceWithFlags.getSourcePath())),
-        Optional.empty());
-    PBXFileReference fileReference = sourcesGroup.getOrCreateFileReferenceBySourceTreePath(
-        sourceTreePath);
+    SourceTreePath sourceTreePath =
+        new SourceTreePath(
+            PBXReference.SourceTree.SOURCE_ROOT,
+            pathRelativizer.outputDirToRootRelative(
+                sourcePathResolver.apply(sourceWithFlags.getSourcePath())),
+            Optional.empty());
+    PBXFileReference fileReference =
+        sourcesGroup.getOrCreateFileReferenceBySourceTreePath(sourceTreePath);
     PBXBuildFile buildFile = new PBXBuildFile(fileReference);
     sourcesBuildPhase.getFiles().add(buildFile);
 
     ImmutableList<String> customLangPreprocessorFlags = ImmutableList.of();
-    Optional<CxxSource.Type> sourceType = CxxSource.Type.fromExtension(
-        Files.getFileExtension(sourceTreePath.toString()));
+    Optional<CxxSource.Type> sourceType =
+        CxxSource.Type.fromExtension(Files.getFileExtension(sourceTreePath.toString()));
     if (sourceType.isPresent() && langPreprocessorFlags.containsKey(sourceType.get())) {
       customLangPreprocessorFlags = langPreprocessorFlags.get(sourceType.get());
     }
 
-    ImmutableList<String> customFlags = ImmutableList.copyOf(
-        Iterables.concat(
-            customLangPreprocessorFlags,
-            sourceWithFlags.getFlags()));
+    ImmutableList<String> customFlags =
+        ImmutableList.copyOf(
+            Iterables.concat(customLangPreprocessorFlags, sourceWithFlags.getFlags()));
     if (!customFlags.isEmpty()) {
       NSDictionary settings = new NSDictionary();
       settings.put("COMPILER_FLAGS", Joiner.on(' ').join(customFlags));
@@ -472,15 +450,10 @@ class NewNativeTargetProjectMutator {
     }
     LOG.verbose(
         "Added source path %s to group %s, flags %s, PBXFileReference %s",
-        sourceWithFlags,
-        sourcesGroup.getName(),
-        customFlags,
-        fileReference);
+        sourceWithFlags, sourcesGroup.getName(), customFlags, fileReference);
   }
 
-  private void addSourcePathToSourceTree(
-      SourcePath sourcePath,
-      PBXGroup sourcesGroup) {
+  private void addSourcePathToSourceTree(SourcePath sourcePath, PBXGroup sourcesGroup) {
     sourcesGroup.getOrCreateFileReferenceBySourceTreePath(
         new SourceTreePath(
             PBXReference.SourceTree.SOURCE_ROOT,
@@ -493,17 +466,18 @@ class NewNativeTargetProjectMutator {
       PBXGroup headersGroup,
       PBXHeadersBuildPhase headersBuildPhase,
       HeaderVisibility visibility) {
-    PBXFileReference fileReference = headersGroup.getOrCreateFileReferenceBySourceTreePath(
-        new SourceTreePath(
-            PBXReference.SourceTree.SOURCE_ROOT,
-            pathRelativizer.outputPathToSourcePath(headerPath),
-            Optional.empty()));
+    PBXFileReference fileReference =
+        headersGroup.getOrCreateFileReferenceBySourceTreePath(
+            new SourceTreePath(
+                PBXReference.SourceTree.SOURCE_ROOT,
+                pathRelativizer.outputPathToSourcePath(headerPath),
+                Optional.empty()));
     PBXBuildFile buildFile = new PBXBuildFile(fileReference);
     if (visibility != HeaderVisibility.PRIVATE) {
 
-      if (this.frameworkHeadersEnabled &&
-          (this.productType == ProductType.FRAMEWORK ||
-              this.productType == ProductType.STATIC_FRAMEWORK)) {
+      if (this.frameworkHeadersEnabled
+          && (this.productType == ProductType.FRAMEWORK
+              || this.productType == ProductType.STATIC_FRAMEWORK)) {
         headersBuildPhase.getFiles().add(buildFile);
       }
 
@@ -532,10 +506,11 @@ class NewNativeTargetProjectMutator {
       if (framework.getSourceTreePath().isPresent()) {
         sourceTreePath = framework.getSourceTreePath().get();
       } else if (framework.getSourcePath().isPresent()) {
-        sourceTreePath = new SourceTreePath(
-            PBXReference.SourceTree.SOURCE_ROOT,
-            pathRelativizer.outputPathToSourcePath(framework.getSourcePath().get()),
-            Optional.empty());
+        sourceTreePath =
+            new SourceTreePath(
+                PBXReference.SourceTree.SOURCE_ROOT,
+                pathRelativizer.outputPathToSourcePath(framework.getSourcePath().get()),
+                Optional.empty());
       } else {
         throw new RuntimeException();
       }
@@ -606,25 +581,25 @@ class NewNativeTargetProjectMutator {
   }
 
   private void collectResourcePathsFromConstructorArgs(
-      Set<AppleResourceDescription.Arg> resourceArgs,
-      Set<AppleAssetCatalogDescription.Arg> assetCatalogArgs,
+      Set<AppleResourceDescriptionArg> resourceArgs,
+      Set<AppleAssetCatalogDescriptionArg> assetCatalogArgs,
       Set<AppleWrapperResourceArg> resourcePathArgs,
       ImmutableSet.Builder<Path> resourceFilesBuilder,
       ImmutableSet.Builder<Path> resourceDirsBuilder,
       ImmutableSet.Builder<Path> variantResourceFilesBuilder) {
-    for (AppleResourceDescription.Arg arg : resourceArgs) {
-      resourceFilesBuilder.addAll(Iterables.transform(arg.files, sourcePathResolver));
-      resourceDirsBuilder.addAll(Iterables.transform(arg.dirs, sourcePathResolver));
+    for (AppleResourceDescriptionArg arg : resourceArgs) {
+      resourceFilesBuilder.addAll(Iterables.transform(arg.getFiles(), sourcePathResolver));
+      resourceDirsBuilder.addAll(Iterables.transform(arg.getDirs(), sourcePathResolver));
       variantResourceFilesBuilder.addAll(
-          Iterables.transform(arg.variants, sourcePathResolver));
+          Iterables.transform(arg.getVariants(), sourcePathResolver));
     }
 
-    for (AppleAssetCatalogDescription.Arg arg : assetCatalogArgs) {
-      resourceDirsBuilder.addAll(Iterables.transform(arg.dirs, sourcePathResolver));
+    for (AppleAssetCatalogDescriptionArg arg : assetCatalogArgs) {
+      resourceDirsBuilder.addAll(Iterables.transform(arg.getDirs(), sourcePathResolver));
     }
 
     for (AppleWrapperResourceArg arg : resourcePathArgs) {
-      resourceDirsBuilder.add(arg.path);
+      resourceDirsBuilder.add(arg.getPath());
     }
   }
 
@@ -641,19 +616,21 @@ class NewNativeTargetProjectMutator {
 
     PBXGroup resourcesGroup = targetGroup.getOrCreateChildGroupByName("Resources");
     for (Path path : resourceFiles) {
-      PBXFileReference fileReference = resourcesGroup.getOrCreateFileReferenceBySourceTreePath(
-          new SourceTreePath(
-              PBXReference.SourceTree.SOURCE_ROOT,
-              pathRelativizer.outputDirToRootRelative(path),
-              Optional.empty()));
+      PBXFileReference fileReference =
+          resourcesGroup.getOrCreateFileReferenceBySourceTreePath(
+              new SourceTreePath(
+                  PBXReference.SourceTree.SOURCE_ROOT,
+                  pathRelativizer.outputDirToRootRelative(path),
+                  Optional.empty()));
       resourceCallback.accept(fileReference);
     }
     for (Path path : resourceDirs) {
-      PBXFileReference fileReference = resourcesGroup.getOrCreateFileReferenceBySourceTreePath(
-          new SourceTreePath(
-              PBXReference.SourceTree.SOURCE_ROOT,
-              pathRelativizer.outputDirToRootRelative(path),
-              Optional.of("folder")));
+      PBXFileReference fileReference =
+          resourcesGroup.getOrCreateFileReferenceBySourceTreePath(
+              new SourceTreePath(
+                  PBXReference.SourceTree.SOURCE_ROOT,
+                  pathRelativizer.outputDirToRootRelative(path),
+                  Optional.of("folder")));
       resourceCallback.accept(fileReference);
     }
 
@@ -663,8 +640,8 @@ class NewNativeTargetProjectMutator {
       Path variantDirectory = variantFilePath.getParent();
       if (variantDirectory == null || !variantDirectory.toString().endsWith(lprojSuffix)) {
         throw new HumanReadableException(
-            "Variant files have to be in a directory with name ending in '.lproj', " +
-                "but '%s' is not.",
+            "Variant files have to be in a directory with name ending in '.lproj', "
+                + "but '%s' is not.",
             variantFilePath);
       }
       String variantDirectoryName = variantDirectory.getFileName().toString();
@@ -677,20 +654,19 @@ class NewNativeTargetProjectMutator {
         variantGroupCallback.accept(variantGroup);
         variantGroups.put(variantFileName, variantGroup);
       }
-      SourceTreePath sourceTreePath = new SourceTreePath(
-          PBXReference.SourceTree.SOURCE_ROOT,
-          pathRelativizer.outputDirToRootRelative(variantFilePath),
-          Optional.empty());
+      SourceTreePath sourceTreePath =
+          new SourceTreePath(
+              PBXReference.SourceTree.SOURCE_ROOT,
+              pathRelativizer.outputDirToRootRelative(variantFilePath),
+              Optional.empty());
       variantGroup.getOrCreateVariantFileReferenceByNameAndSourceTreePath(
-          variantLocalization,
-          sourceTreePath);
+          variantLocalization, sourceTreePath);
     }
   }
 
   private ImmutableList<PBXShellScriptBuildPhase> createScriptsForTargetNodes(
       Iterable<TargetNode<?, ?>> nodes) throws IllegalStateException {
-    ImmutableList.Builder<PBXShellScriptBuildPhase> builder =
-      ImmutableList.builder();
+    ImmutableList.Builder<PBXShellScriptBuildPhase> builder = ImmutableList.builder();
     for (TargetNode<?, ?> node : nodes) {
       PBXShellScriptBuildPhase shellScriptBuildPhase = new PBXShellScriptBuildPhase();
       boolean nodeIsPrebuildScript =
@@ -702,13 +678,13 @@ class NewNativeTargetProjectMutator {
         shellScriptBuildPhase
             .getInputPaths()
             .addAll(
-                FluentIterable.from(arg.srcs)
+                FluentIterable.from(arg.getSrcs())
                     .transform(sourcePathResolver)
                     .transform(pathRelativizer::outputDirToRootRelative)
                     .transform(Object::toString)
                     .toSet());
-        shellScriptBuildPhase.getOutputPaths().addAll(arg.outputs);
-        shellScriptBuildPhase.setShellScript(arg.cmd);
+        shellScriptBuildPhase.getOutputPaths().addAll(arg.getOutputs());
+        shellScriptBuildPhase.setShellScript(arg.getCmd());
       } else if (node.getDescription() instanceof IosReactNativeLibraryDescription) {
         shellScriptBuildPhase.setShellScript(generateXcodeShellScript(node));
       } else {
@@ -721,36 +697,36 @@ class NewNativeTargetProjectMutator {
   }
 
   private void addRunScriptBuildPhases(
-      PBXNativeTarget target,
-      Iterable<PBXShellScriptBuildPhase> phases) {
+      PBXNativeTarget target, Iterable<PBXShellScriptBuildPhase> phases) {
     for (PBXShellScriptBuildPhase phase : phases) {
       target.getBuildPhases().add(phase);
     }
   }
 
   private String generateXcodeShellScript(TargetNode<?, ?> targetNode) {
-    Preconditions.checkArgument(targetNode.getConstructorArg() instanceof ReactNativeLibraryArgs);
+    Preconditions.checkArgument(targetNode.getConstructorArg() instanceof ReactNativeLibraryArg);
 
     ST template;
     try {
-      template = new ST(
-          Resources.toString(
-              Resources.getResource(
-                  NewNativeTargetProjectMutator.class,
-                  REACT_NATIVE_PACKAGE_TEMPLATE),
-              Charsets.UTF_8));
+      template =
+          new ST(
+              Resources.toString(
+                  Resources.getResource(
+                      NewNativeTargetProjectMutator.class, REACT_NATIVE_PACKAGE_TEMPLATE),
+                  Charsets.UTF_8));
     } catch (IOException e) {
       throw new RuntimeException("There was an error loading 'rn_package.st' template", e);
     }
 
-    ReactNativeLibraryArgs args = (ReactNativeLibraryArgs) targetNode.getConstructorArg();
+    CoreReactNativeLibraryArg args = (CoreReactNativeLibraryArg) targetNode.getConstructorArg();
 
-    template.add("bundle_name", args.bundleName);
+    template.add("bundle_name", args.getBundleName());
 
     ProjectFilesystem filesystem = targetNode.getFilesystem();
     BuildTarget buildTarget = targetNode.getBuildTarget();
     Path jsOutput =
-        ReactNativeBundle.getPathToJSBundleDir(buildTarget, filesystem).resolve(args.bundleName);
+        ReactNativeBundle.getPathToJSBundleDir(buildTarget, filesystem)
+            .resolve(args.getBundleName());
     template.add("built_bundle_path", filesystem.resolve(jsOutput));
 
     Path resourceOutput = ReactNativeBundle.getPathToResources(buildTarget, filesystem);

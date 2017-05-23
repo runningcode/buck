@@ -23,9 +23,11 @@ import com.facebook.buck.jvm.core.JavaPackageFinder;
 import com.facebook.buck.log.InvocationInfo;
 import com.facebook.buck.parser.Parser;
 import com.facebook.buck.rules.ActionGraphCache;
+import com.facebook.buck.rules.BuildInfoStoreManager;
 import com.facebook.buck.rules.Cell;
 import com.facebook.buck.rules.KnownBuildRuleTypesFactory;
 import com.facebook.buck.rules.RuleKey;
+import com.facebook.buck.rules.coercer.TypeCoercerFactory;
 import com.facebook.buck.rules.keys.RuleKeyCacheRecycler;
 import com.facebook.buck.shell.WorkerProcessPool;
 import com.facebook.buck.step.ExecutorPool;
@@ -41,13 +43,11 @@ import com.facebook.buck.versions.VersionedTargetGraphCache;
 import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ListeningExecutorService;
-
-import org.immutables.value.Value;
-
 import java.io.InputStream;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentMap;
+import org.immutables.value.Value;
 
 @Value.Immutable()
 @BuckStyleImmutable
@@ -61,6 +61,8 @@ public interface AbstractCommandRunnerParams {
   VersionedTargetGraphCache getVersionedTargetGraphCache();
 
   ArtifactCacheFactory getArtifactCacheFactory();
+
+  TypeCoercerFactory getTypeCoercerFactory();
 
   Parser getParser();
 
@@ -95,6 +97,8 @@ public interface AbstractCommandRunnerParams {
   ActionGraphCache getActionGraphCache();
 
   KnownBuildRuleTypesFactory getKnownBuildRuleTypesFactory();
+
+  BuildInfoStoreManager getBuildInfoStoreManager();
 
   Optional<InvocationInfo> getInvocationInfo();
 

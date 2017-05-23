@@ -21,28 +21,31 @@ import com.facebook.buck.jvm.java.DefaultJavaLibraryBuilder;
 import com.facebook.buck.jvm.java.JavaLibraryDescription;
 import com.facebook.buck.rules.BuildRuleParams;
 import com.facebook.buck.rules.BuildRuleResolver;
+import com.facebook.buck.rules.CellPathResolver;
+import com.facebook.buck.rules.TargetGraph;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-
 
 public class DefaultKotlinLibraryBuilder extends DefaultJavaLibraryBuilder {
   private final KotlinBuckConfig kotlinBuckConfig;
   private ImmutableList<String> extraKotlincArguments = ImmutableList.of();
 
   public DefaultKotlinLibraryBuilder(
+      TargetGraph targetGraph,
       BuildRuleParams params,
       BuildRuleResolver buildRuleResolver,
+      CellPathResolver cellRoots,
       KotlinBuckConfig kotlinBuckConfig) {
-    super(params, buildRuleResolver);
+    super(targetGraph, params, buildRuleResolver, cellRoots);
     this.kotlinBuckConfig = kotlinBuckConfig;
   }
 
   @Override
-  public DefaultKotlinLibraryBuilder setArgs(JavaLibraryDescription.Arg args) {
+  public DefaultKotlinLibraryBuilder setArgs(JavaLibraryDescription.CoreArg args) {
     super.setArgs(args);
 
-    KotlinLibraryDescription.Arg kotlinArgs = (KotlinLibraryDescription.Arg) args;
-    extraKotlincArguments = kotlinArgs.extraKotlincArguments;
+    KotlinLibraryDescription.CoreArg kotlinArgs = (KotlinLibraryDescription.CoreArg) args;
+    extraKotlincArguments = kotlinArgs.getExtraKotlincArguments();
     return this;
   }
 

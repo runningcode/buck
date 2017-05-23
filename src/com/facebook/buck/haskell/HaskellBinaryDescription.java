@@ -29,14 +29,15 @@ import com.facebook.buck.model.FlavorDomain;
 import com.facebook.buck.model.Flavored;
 import com.facebook.buck.model.InternalFlavor;
 import com.facebook.buck.parser.NoSuchBuildTargetException;
-import com.facebook.buck.rules.AbstractDescriptionArg;
 import com.facebook.buck.rules.BuildRule;
 import com.facebook.buck.rules.BuildRuleParams;
 import com.facebook.buck.rules.BuildRuleResolver;
 import com.facebook.buck.rules.CellPathResolver;
 import com.facebook.buck.rules.CommandTool;
+import com.facebook.buck.rules.CommonDescriptionArg;
 import com.facebook.buck.rules.DefaultBuildTargetSourcePath;
 import com.facebook.buck.rules.Description;
+import com.facebook.buck.rules.HasDeclaredDeps;
 import com.facebook.buck.rules.ImplicitDepsInferringDescription;
 import com.facebook.buck.rules.SourcePathResolver;
 import com.facebook.buck.rules.SourcePathRuleFinder;
@@ -49,22 +50,23 @@ import com.facebook.buck.rules.query.Query;
 import com.facebook.buck.rules.query.QueryUtils;
 import com.facebook.buck.util.MoreIterables;
 import com.facebook.buck.util.RichStream;
+import com.facebook.buck.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.versions.VersionRoot;
-import com.facebook.infer.annotation.SuppressFieldNotInitialized;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Iterables;
-
 import java.nio.file.Path;
 import java.util.Optional;
+import org.immutables.value.Value;
 
-public class HaskellBinaryDescription implements
-    Description<HaskellBinaryDescription.Arg>,
-    ImplicitDepsInferringDescription<HaskellBinaryDescription.Arg>,
-    Flavored,
-    VersionRoot<HaskellBinaryDescription.Arg> {
+public class HaskellBinaryDescription
+    implements Description<HaskellBinaryDescriptionArg>,
+        ImplicitDepsInferringDescription<
+            HaskellBinaryDescription.AbstractHaskellBinaryDescriptionArg>,
+        Flavored,
+        VersionRoot<HaskellBinaryDescriptionArg> {
 
   private static final FlavorDomain<Type> BINARY_TYPE =
       FlavorDomain.from("Haskell Binary Type", Type.class);
@@ -75,47 +77,46 @@ public class HaskellBinaryDescription implements
 
   public HaskellBinaryDescription(
       HaskellConfig haskellConfig,
-      FlavorDomain<CxxPlatform> cxxPlatforms, CxxPlatform defaultCxxPlatform) {
+      FlavorDomain<CxxPlatform> cxxPlatforms,
+      CxxPlatform defaultCxxPlatform) {
     this.haskellConfig = haskellConfig;
     this.cxxPlatforms = cxxPlatforms;
     this.defaultCxxPlatform = defaultCxxPlatform;
   }
 
   @Override
-  public Arg createUnpopulatedConstructorArg() {
-    return new Arg();
+  public Class<HaskellBinaryDescriptionArg> getConstructorArgType() {
+    return HaskellBinaryDescriptionArg.class;
   }
 
-  private Linker.LinkableDepType getLinkStyle(BuildTarget target, Arg arg) {
+  private Linker.LinkableDepType getLinkStyle(BuildTarget target, HaskellBinaryDescriptionArg arg) {
     Optional<Type> type = BINARY_TYPE.getValue(target);
     if (type.isPresent()) {
       return type.get().getLinkStyle();
     }
-    if (arg.linkStyle.isPresent()) {
-      return arg.linkStyle.get();
+    if (arg.getLinkStyle().isPresent()) {
+      return arg.getLinkStyle().get();
     }
     return Linker.LinkableDepType.STATIC;
   }
 
   @Override
-  public <A extends Arg> BuildRule createBuildRule(
+  public BuildRule createBuildRule(
       TargetGraph targetGraph,
       BuildRuleParams params,
       BuildRuleResolver resolver,
       CellPathResolver cellRoots,
-      A args)
+      HaskellBinaryDescriptionArg args)
       throws NoSuchBuildTargetException {
 
     SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
     SourcePathResolver pathResolver = new SourcePathResolver(ruleFinder);
-    CxxPlatform cxxPlatform = cxxPlatforms.getValue(params.getBuildTarget()).orElse(
-        defaultCxxPlatform);
+    CxxPlatform cxxPlatform =
+        cxxPlatforms.getValue(params.getBuildTarget()).orElse(defaultCxxPlatform);
     Linker.LinkableDepType depType = getLinkStyle(params.getBuildTarget(), args);
 
     // The target to use for the link rule.
-    BuildTarget binaryTarget =
-        params.getBuildTarget().withFlavors(
-            InternalFlavor.of("binary"));
+    BuildTarget binaryTarget = params.getBuildTarget().withFlavors(InternalFlavor.of("binary"));
 
     // Maintain backwards compatibility to ease upgrade flows.
     if (haskellConfig.shouldUsedOldBinaryOutputLocation().orElse(true)) {
@@ -125,21 +126,22 @@ public class HaskellBinaryDescription implements
     ImmutableSet.Builder<BuildRule> depsBuilder = ImmutableSet.builder();
     depsBuilder.addAll(
         CxxDeps.builder()
-            .addDeps(args.deps)
-            .addPlatformDeps(args.platformDeps)
+            .addDeps(args.getDeps())
+            .addPlatformDeps(args.getPlatformDeps())
             .build()
             .get(resolver, cxxPlatform));
-    args.depsQuery.ifPresent(
-        query ->
-            QueryUtils.resolveDepQuery(
-                params.getBuildTarget(),
-                query,
-                resolver,
-                cellRoots,
-                targetGraph,
-                args.deps)
-                .filter(NativeLinkable.class::isInstance)
-                .forEach(depsBuilder::add));
+    args.getDepsQuery()
+        .ifPresent(
+            query ->
+                QueryUtils.resolveDepQuery(
+                        params.getBuildTarget(),
+                        query,
+                        resolver,
+                        cellRoots,
+                        targetGraph,
+                        args.getDeps())
+                    .filter(NativeLinkable.class::isInstance)
+                    .forEach(depsBuilder::add));
     ImmutableSet<BuildRule> deps = depsBuilder.build();
 
     ImmutableList.Builder<String> linkFlagsBuilder = ImmutableList.builder();
@@ -168,7 +170,9 @@ public class HaskellBinaryDescription implements
       // Embed a origin-relative library path into the binary so it can find the shared libraries.
       // The shared libraries root is absolute. Also need an absolute path to the linkOutput
       Path absBinaryDir =
-          params.getBuildTarget().getCellPath()
+          params
+              .getBuildTarget()
+              .getCellPath()
               .resolve(HaskellLinkRule.getOutputDir(binaryTarget, params.getProjectFilesystem()));
       linkFlagsBuilder.addAll(
           MoreIterables.zipAndConcat(
@@ -193,15 +197,13 @@ public class HaskellBinaryDescription implements
                 params,
                 resolver,
                 ruleFinder,
-                RichStream.from(deps)
-                    .filter(HaskellCompileDep.class::isInstance)
-                    .toImmutableSet(),
+                RichStream.from(deps).filter(HaskellCompileDep.class::isInstance).toImmutableSet(),
                 cxxPlatform,
                 haskellConfig,
                 depType,
-                args.main,
+                args.getMain(),
                 Optional.empty(),
-                args.compilerFlags,
+                args.getCompilerFlags(),
                 HaskellSources.from(
                     params.getBuildTarget(),
                     resolver,
@@ -209,7 +211,7 @@ public class HaskellBinaryDescription implements
                     ruleFinder,
                     cxxPlatform,
                     "srcs",
-                    args.srcs)));
+                    args.getSrcs())));
     linkArgsBuilder.addAll(SourcePathArg.from(compileRule.getObjects()));
 
     ImmutableList<String> linkFlags = linkFlagsBuilder.build();
@@ -227,9 +229,7 @@ public class HaskellBinaryDescription implements
             Linker.LinkType.EXECUTABLE,
             linkFlags,
             linkArgs,
-            RichStream.from(deps)
-                .filter(NativeLinkable.class)
-                .toImmutableList(),
+            RichStream.from(deps).filter(NativeLinkable.class).toImmutableList(),
             depType);
 
     return new HaskellBinary(
@@ -244,20 +244,21 @@ public class HaskellBinaryDescription implements
   public void findDepsForTargetFromConstructorArgs(
       BuildTarget buildTarget,
       CellPathResolver cellRoots,
-      Arg constructorArg,
+      AbstractHaskellBinaryDescriptionArg constructorArg,
       ImmutableCollection.Builder<BuildTarget> extraDepsBuilder,
       ImmutableCollection.Builder<BuildTarget> targetGraphOnlyDepsBuilder) {
-        HaskellDescriptionUtils.getParseTimeDeps(
-            haskellConfig,
-            ImmutableList.of(
-                cxxPlatforms
-                    .getValue(buildTarget.getFlavors()).orElse(defaultCxxPlatform)),
-            extraDepsBuilder);
+    HaskellDescriptionUtils.getParseTimeDeps(
+        haskellConfig,
+        ImmutableList.of(
+            cxxPlatforms.getValue(buildTarget.getFlavors()).orElse(defaultCxxPlatform)),
+        extraDepsBuilder);
 
-    constructorArg.depsQuery.ifPresent(
-        depsQuery ->
-            QueryUtils.extractParseTimeTargets(buildTarget, cellRoots, depsQuery)
-                .forEach(extraDepsBuilder::add));
+    constructorArg
+        .getDepsQuery()
+        .ifPresent(
+            depsQuery ->
+                QueryUtils.extractParseTimeTargets(buildTarget, cellRoots, depsQuery)
+                    .forEach(extraDepsBuilder::add));
   }
 
   @Override
@@ -281,7 +282,6 @@ public class HaskellBinaryDescription implements
   }
 
   protected enum Type implements FlavorConvertible {
-
     SHARED(CxxDescriptionEnhancer.SHARED_FLAVOR, Linker.LinkableDepType.SHARED),
     STATIC_PIC(CxxDescriptionEnhancer.STATIC_PIC_FLAVOR, Linker.LinkableDepType.STATIC_PIC),
     STATIC(CxxDescriptionEnhancer.STATIC_FLAVOR, Linker.LinkableDepType.STATIC),
@@ -303,19 +303,28 @@ public class HaskellBinaryDescription implements
     public Linker.LinkableDepType getLinkStyle() {
       return linkStyle;
     }
-
   }
 
-  @SuppressFieldNotInitialized
-  public static class Arg extends AbstractDescriptionArg {
-    public SourceList srcs = SourceList.EMPTY;
-    public ImmutableList<String> compilerFlags = ImmutableList.of();
-    public ImmutableSortedSet<BuildTarget> deps = ImmutableSortedSet.of();
-    public PatternMatchedCollection<ImmutableSortedSet<BuildTarget>> platformDeps =
-        PatternMatchedCollection.of();
-    public Optional<Query> depsQuery = Optional.empty();
-    public Optional<String> main;
-    public Optional<Linker.LinkableDepType> linkStyle;
-  }
+  @BuckStyleImmutable
+  @Value.Immutable
+  interface AbstractHaskellBinaryDescriptionArg extends CommonDescriptionArg, HasDeclaredDeps {
 
+    @Value.Default
+    default SourceList getSrcs() {
+      return SourceList.EMPTY;
+    }
+
+    ImmutableList<String> getCompilerFlags();
+
+    @Value.Default
+    default PatternMatchedCollection<ImmutableSortedSet<BuildTarget>> getPlatformDeps() {
+      return PatternMatchedCollection.of();
+    }
+
+    Optional<Query> getDepsQuery();
+
+    Optional<String> getMain();
+
+    Optional<Linker.LinkableDepType> getLinkStyle();
+  }
 }

@@ -36,26 +36,22 @@ import com.facebook.buck.util.cache.DefaultFileHashCache;
 import com.facebook.buck.util.cache.FileHashCache;
 import com.facebook.buck.util.cache.StackedFileHashCache;
 import com.google.common.collect.ImmutableList;
-
 import org.junit.Test;
-
-
 
 public class PrebuiltCxxLibraryTest {
 
   @Test
   public void testGetNativeLinkWithDep() throws Exception {
     ProjectFilesystem filesystem = new FakeProjectFilesystem();
-    CxxPlatform platform = CxxLibraryBuilder.createDefaultPlatform();
+    CxxPlatform platform = CxxPlatformUtils.DEFAULT_PLATFORM;
 
     GenruleBuilder genSrcBuilder =
         GenruleBuilder.newGenruleBuilder(BuildTargetFactory.newInstance("//:gen_libx"))
             .setOut("gen_libx")
             .setCmd("something");
     BuildTarget target = BuildTargetFactory.newInstance("//:x");
-    PrebuiltCxxLibraryBuilder builder = new PrebuiltCxxLibraryBuilder(target)
-        .setLibName("x")
-        .setLibDir("$(location //:gen_libx)");
+    PrebuiltCxxLibraryBuilder builder =
+        new PrebuiltCxxLibraryBuilder(target).setLibName("x").setLibDir("$(location //:gen_libx)");
 
     TargetGraph targetGraph =
         TargetGraphFactory.newInstance(genSrcBuilder.build(), builder.build());
@@ -70,14 +66,11 @@ public class PrebuiltCxxLibraryTest {
         pathResolver.getAbsolutePath(genSrc.getSourcePathToOutput()).resolve("libx.a"));
 
     PrebuiltCxxLibrary lib = (PrebuiltCxxLibrary) builder.build(resolver, filesystem, targetGraph);
-    lib.getNativeLinkableInput(
-        platform,
-        Linker.LinkableDepType.STATIC);
+    lib.getNativeLinkableInput(platform, Linker.LinkableDepType.STATIC);
 
     FileHashCache originalHashCache =
         new StackedFileHashCache(
-            ImmutableList.of(
-                DefaultFileHashCache.createDefaultFileHashCache(filesystem)));
+            ImmutableList.of(DefaultFileHashCache.createDefaultFileHashCache(filesystem)));
     DefaultRuleKeyFactory factory =
         new DefaultRuleKeyFactory(0, originalHashCache, pathResolver, ruleFinder);
 

@@ -18,12 +18,18 @@ package com.facebook.buck.event.listener;
 
 import static com.facebook.buck.log.MachineReadableLogConfig.PREFIX_EXIT_CODE;
 import static com.facebook.buck.log.MachineReadableLogConfig.PREFIX_INVOCATION_INFO;
+import static com.facebook.buck.log.MachineReadableLogConfig.PREFIX_PERFTIMES_COMPLETE;
+import static com.facebook.buck.log.MachineReadableLogConfig.PREFIX_PERFTIMES_UPDATE;
+import static com.facebook.buck.log.MachineReadableLogConfig.PREFIX_UPLOAD_TO_CACHE_STATS;
 
+import com.facebook.buck.artifact_cache.ArtifactCacheEvent;
+import com.facebook.buck.artifact_cache.HttpArtifactCacheEvent;
 import com.facebook.buck.event.BuckEventListener;
 import com.facebook.buck.event.CommandEvent;
 import com.facebook.buck.event.ParsingEvent;
 import com.facebook.buck.event.WatchmanStatusEvent;
 import com.facebook.buck.io.ProjectFilesystem;
+import com.facebook.buck.log.CacheUploadInfo;
 import com.facebook.buck.log.InvocationInfo;
 import com.facebook.buck.log.Logger;
 import com.facebook.buck.log.views.JsonViews;
@@ -39,7 +45,6 @@ import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import com.google.common.base.Charsets;
 import com.google.common.eventbus.Subscribe;
-
 import java.io.BufferedOutputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -49,6 +54,7 @@ import java.util.OptionalInt;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class MachineReadableLoggerListener implements BuckEventListener {
 
@@ -66,21 +72,26 @@ public class MachineReadableLoggerListener implements BuckEventListener {
   // Values to be written in the end of the log.
   private OptionalInt exitCode = OptionalInt.empty();
 
+  // Cache upload statistics
+  private AtomicInteger cacheUploadSuccessCount = new AtomicInteger();
+  private AtomicInteger cacheUploadFailureCount = new AtomicInteger();
+
   public MachineReadableLoggerListener(
-      InvocationInfo info,
-      ProjectFilesystem filesystem,
-      ExecutorService executor) throws FileNotFoundException {
+      InvocationInfo info, ProjectFilesystem filesystem, ExecutorService executor)
+      throws FileNotFoundException {
     this.info = info;
     this.filesystem = filesystem;
     this.executor = executor;
 
-    this.objectWriter = ObjectMappers.legacyCreate()
-        .copy()
-        .configure(MapperFeature.DEFAULT_VIEW_INCLUSION, false)
-        .writerWithView(JsonViews.MachineReadableLog.class);
+    this.objectWriter =
+        ObjectMappers.legacyCreate()
+            .copy()
+            .configure(MapperFeature.DEFAULT_VIEW_INCLUSION, false)
+            .writerWithView(JsonViews.MachineReadableLog.class);
 
-    this.outputStream = new BufferedOutputStream(
-        new FileOutputStream(getLogFilePath().toFile(), /* append */ true));
+    this.outputStream =
+        new BufferedOutputStream(
+            new FileOutputStream(getLogFilePath().toFile(), /* append */ true));
 
     writeToLog(PREFIX_INVOCATION_INFO, info);
   }
@@ -142,7 +153,11 @@ public class MachineReadableLoggerListener implements BuckEventListener {
 
   @Subscribe
   public synchronized void timePerfStatsEvent(PerfTimesEventListener.PerfTimesEvent event) {
-    writeToLog("PertTimesStats", event);
+    writeToLog(
+        event instanceof PerfTimesEventListener.PerfTimesEvent.Complete
+            ? PREFIX_PERFTIMES_COMPLETE
+            : PREFIX_PERFTIMES_UPDATE,
+        event);
   }
 
   @Subscribe
@@ -163,42 +178,63 @@ public class MachineReadableLoggerListener implements BuckEventListener {
     writeToLog("Autosparse.SparseRefreshFailed", event);
   }
 
+  @Subscribe
+  public void onArtifactCacheEvent(HttpArtifactCacheEvent.Finished event) {
+    if (event.getOperation() == ArtifactCacheEvent.Operation.STORE) {
+      if (event.getStoreData().wasStoreSuccessful().orElse(false)) {
+        cacheUploadSuccessCount.incrementAndGet();
+      } else {
+        cacheUploadFailureCount.incrementAndGet();
+      }
+    }
+  }
+
   private Path getLogFilePath() {
-    return filesystem.resolve(info.getLogDirectoryPath())
+    return filesystem
+        .resolve(info.getLogDirectoryPath())
         .resolve(BuckConstant.BUCK_MACHINE_LOG_FILE_NAME);
   }
 
   private void writeToLog(final String prefix, final Object obj) {
-    executor.submit(() -> {
-      try {
-        byte[] serializedObj = objectWriter.writeValueAsBytes(obj);
-        outputStream.write((prefix + " ").getBytes(Charsets.UTF_8));
-        outputStream.write(serializedObj);
-        outputStream.write(NEWLINE);
-        outputStream.flush();
-      } catch (JsonProcessingException e) {
-        LOG.warn("Failed to process json for event type: %s ", prefix);
-      } catch (IOException e) {
-        LOG.debug("Failed to write to %s", BuckConstant.BUCK_MACHINE_LOG_FILE_NAME, e);
-      }
-    });
+    executor.submit(() -> writeToLogImpl(prefix, obj));
+  }
+
+  private void writeToLogImpl(String prefix, Object obj) {
+    try {
+      byte[] serializedObj = objectWriter.writeValueAsBytes(obj);
+      outputStream.write((prefix + " ").getBytes(Charsets.UTF_8));
+      outputStream.write(serializedObj);
+      outputStream.write(NEWLINE);
+      outputStream.flush();
+    } catch (JsonProcessingException e) {
+      LOG.warn("Failed to process json for event type: %s ", prefix);
+    } catch (IOException e) {
+      LOG.debug("Failed to write to %s", BuckConstant.BUCK_MACHINE_LOG_FILE_NAME, e);
+    }
   }
 
   @Override
   public void outputTrace(BuildId buildId) throws InterruptedException {
     // IMPORTANT: logging the ExitCode must happen on the executor, otherwise random
     // log lines will be overwritten as outputStream access is not thread safe.
-    @SuppressWarnings("unused") Future<?> unused = executor.submit(() -> {
-      try {
-        outputStream.write(
-            String.format(PREFIX_EXIT_CODE + " {\"exitCode\":%d}", exitCode.orElse(-1))
-                .getBytes(Charsets.UTF_8));
+    @SuppressWarnings("unused")
+    Future<?> unused =
+        executor.submit(
+            () -> {
+              try {
+                writeToLogImpl(
+                    PREFIX_UPLOAD_TO_CACHE_STATS,
+                    CacheUploadInfo.of(cacheUploadSuccessCount, cacheUploadFailureCount));
 
-        outputStream.close();
-      } catch (IOException e) {
-        LOG.warn("Failed to close output stream.");
-      }
-    });
+                outputStream.write(
+                    String.format(PREFIX_EXIT_CODE + " {\"exitCode\":%d}", exitCode.orElse(-1))
+                        .getBytes(Charsets.UTF_8));
+
+                outputStream.close();
+              } catch (IOException e) {
+                LOG.warn("Failed to close output stream.");
+              }
+            });
     executor.shutdown();
     // Allow SHUTDOWN_TIMEOUT_SECONDS seconds for already scheduled writeToLog calls
     // to complete.

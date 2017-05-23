@@ -1,6 +1,7 @@
 java_test(
     name = "rules",
     srcs = glob(["*Test.java"]),
+    has_immutable_types = True,
     resources = glob(["testdata/**"]),
     deps = [
         "//src-gen:thrift",
@@ -189,7 +190,7 @@ java_test(
     ],
 )
 
-java_library(
+java_immutables_library(
     name = "testutil",
     srcs = glob(
         ["*.java"],

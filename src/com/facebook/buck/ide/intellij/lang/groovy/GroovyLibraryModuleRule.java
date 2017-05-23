@@ -16,16 +16,16 @@
 package com.facebook.buck.ide.intellij.lang.groovy;
 
 import com.facebook.buck.ide.intellij.BaseIjModuleRule;
+import com.facebook.buck.ide.intellij.ModuleBuildContext;
 import com.facebook.buck.ide.intellij.model.IjModuleFactoryResolver;
 import com.facebook.buck.ide.intellij.model.IjModuleType;
 import com.facebook.buck.ide.intellij.model.IjProjectConfig;
-import com.facebook.buck.ide.intellij.ModuleBuildContext;
 import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.jvm.groovy.GroovyLibraryDescription;
 import com.facebook.buck.rules.Description;
 import com.facebook.buck.rules.TargetNode;
 
-public class GroovyLibraryModuleRule extends BaseIjModuleRule<GroovyLibraryDescription.Arg> {
+public class GroovyLibraryModuleRule extends BaseIjModuleRule<GroovyLibraryDescription.CoreArg> {
 
   public GroovyLibraryModuleRule(
       ProjectFilesystem projectFilesystem,
@@ -41,16 +41,12 @@ public class GroovyLibraryModuleRule extends BaseIjModuleRule<GroovyLibraryDescr
 
   @Override
   public void apply(
-      TargetNode<GroovyLibraryDescription.Arg, ?> target,
-      ModuleBuildContext context) {
-    addDepsAndSources(
-        target,
-        false /* wantsPackagePrefix */,
-        context);
+      TargetNode<GroovyLibraryDescription.CoreArg, ?> target, ModuleBuildContext context) {
+    addDepsAndSources(target, false /* wantsPackagePrefix */, context);
   }
 
   @Override
-  public IjModuleType detectModuleType(TargetNode<GroovyLibraryDescription.Arg, ?> targetNode) {
+  public IjModuleType detectModuleType(TargetNode<GroovyLibraryDescription.CoreArg, ?> targetNode) {
     return IjModuleType.UNKNOWN_MODULE;
   }
 }

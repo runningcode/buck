@@ -38,11 +38,10 @@ import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableSet;
 
 public class IosReactNativeLibraryDescription
-    implements
-    Description<ReactNativeLibraryArgs>,
-    Flavored,
-    HasAppleBundleResourcesDescription<ReactNativeLibraryArgs>,
-    ImplicitDepsInferringDescription<ReactNativeLibraryArgs> {
+    implements Description<ReactNativeLibraryArg>,
+        Flavored,
+        HasAppleBundleResourcesDescription<ReactNativeLibraryArg>,
+        ImplicitDepsInferringDescription<AbstractReactNativeLibraryArg> {
 
   private final ReactNativeLibraryGraphEnhancer enhancer;
   private final Supplier<SourcePath> packager;
@@ -53,17 +52,17 @@ public class IosReactNativeLibraryDescription
   }
 
   @Override
-  public ReactNativeLibraryArgs createUnpopulatedConstructorArg() {
-    return new ReactNativeLibraryArgs();
+  public Class<ReactNativeLibraryArg> getConstructorArgType() {
+    return ReactNativeLibraryArg.class;
   }
 
   @Override
-  public <A extends ReactNativeLibraryArgs> ReactNativeBundle createBuildRule(
+  public ReactNativeBundle createBuildRule(
       TargetGraph targetGraph,
       BuildRuleParams params,
       BuildRuleResolver resolver,
       CellPathResolver cellRoots,
-      A args) {
+      ReactNativeLibraryArg args) {
     return enhancer.enhanceForIos(params, resolver, args);
   }
 
@@ -76,7 +75,7 @@ public class IosReactNativeLibraryDescription
   public void findDepsForTargetFromConstructorArgs(
       BuildTarget buildTarget,
       CellPathResolver cellRoots,
-      ReactNativeLibraryArgs constructorArg,
+      AbstractReactNativeLibraryArg constructorArg,
       ImmutableCollection.Builder<BuildTarget> extraDepsBuilder,
       ImmutableCollection.Builder<BuildTarget> targetGraphOnlyDepsBuilder) {
     RichStream.of(packager.get())
@@ -88,16 +87,14 @@ public class IosReactNativeLibraryDescription
   @Override
   public void addAppleBundleResources(
       AppleBundleResources.Builder builder,
-      TargetNode<ReactNativeLibraryArgs, ?> targetNode,
+      TargetNode<ReactNativeLibraryArg, ?> targetNode,
       ProjectFilesystem filesystem,
       BuildRuleResolver resolver) {
     BuildTarget buildTarget = targetNode.getBuildTarget();
     builder.addDirsContainingResourceDirs(
         new ExplicitBuildTargetSourcePath(
-            buildTarget,
-            ReactNativeBundle.getPathToJSBundleDir(buildTarget, filesystem)),
+            buildTarget, ReactNativeBundle.getPathToJSBundleDir(buildTarget, filesystem)),
         new ExplicitBuildTargetSourcePath(
-            buildTarget,
-            ReactNativeBundle.getPathToResources(buildTarget, filesystem)));
+            buildTarget, ReactNativeBundle.getPathToResources(buildTarget, filesystem)));
   }
 }

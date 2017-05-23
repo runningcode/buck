@@ -16,16 +16,17 @@
 package com.facebook.buck.ide.intellij.lang.kotlin;
 
 import com.facebook.buck.ide.intellij.BaseIjModuleRule;
+import com.facebook.buck.ide.intellij.ModuleBuildContext;
 import com.facebook.buck.ide.intellij.model.IjModuleFactoryResolver;
 import com.facebook.buck.ide.intellij.model.IjModuleType;
 import com.facebook.buck.ide.intellij.model.IjProjectConfig;
-import com.facebook.buck.ide.intellij.ModuleBuildContext;
 import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.jvm.kotlin.KotlinTestDescription;
+import com.facebook.buck.jvm.kotlin.KotlinTestDescriptionArg;
 import com.facebook.buck.rules.Description;
 import com.facebook.buck.rules.TargetNode;
 
-public class KotlinTestModuleRule extends BaseIjModuleRule<KotlinTestDescription.Arg> {
+public class KotlinTestModuleRule extends BaseIjModuleRule<KotlinTestDescriptionArg> {
 
   public KotlinTestModuleRule(
       ProjectFilesystem projectFilesystem,
@@ -40,17 +41,12 @@ public class KotlinTestModuleRule extends BaseIjModuleRule<KotlinTestDescription
   }
 
   @Override
-  public void apply(
-      TargetNode<KotlinTestDescription.Arg, ?> target,
-      ModuleBuildContext context) {
-    addDepsAndTestSources(
-        target,
-        false /* wantsPackagePrefix */,
-        context);
+  public void apply(TargetNode<KotlinTestDescriptionArg, ?> target, ModuleBuildContext context) {
+    addDepsAndTestSources(target, false /* wantsPackagePrefix */, context);
   }
 
   @Override
-  public IjModuleType detectModuleType(TargetNode<KotlinTestDescription.Arg, ?> targetNode) {
+  public IjModuleType detectModuleType(TargetNode<KotlinTestDescriptionArg, ?> targetNode) {
     return IjModuleType.UNKNOWN_MODULE;
   }
 }

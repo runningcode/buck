@@ -14,6 +14,7 @@ java_library(
     ],
     deps = [
         "//src-gen:thrift",
+        "//src/com/facebook/buck/android:config",
         "//src/com/facebook/buck/android:utils",
         "//src/com/facebook/buck/cli:config",
         "//src/com/facebook/buck/config:config",
@@ -84,6 +85,7 @@ java_library(
     deps = [
         "//src-gen:thrift",
         "//src/com/facebook/buck/android:apkmodule",
+        "//src/com/facebook/buck/android:config",
         "//src/com/facebook/buck/android:helpers",
         "//src/com/facebook/buck/android:packageable",
         "//src/com/facebook/buck/android:rules",
@@ -423,6 +425,7 @@ java_test(
         STANDARD_TEST_SRCS,
         excludes = APPLE_INTEGRATION_TEST_SRCS,
     ),
+    has_immutable_types = True,
     labels = ["long_running"],
     resources = glob(
         ["testdata/**"],

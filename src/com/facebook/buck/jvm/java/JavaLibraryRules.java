@@ -35,28 +35,25 @@ import com.facebook.buck.step.Step;
 import com.facebook.buck.step.fs.MakeCleanDirectoryStep;
 import com.facebook.buck.step.fs.MkdirStep;
 import com.facebook.buck.util.MoreCollectors;
+import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.hash.HashCode;
-
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
-
 import javax.annotation.Nullable;
 
-/**
- * Common utilities for working with {@link JavaLibrary} objects.
- */
+/** Common utilities for working with {@link JavaLibrary} objects. */
 public class JavaLibraryRules {
 
   /** Utility class: do not instantiate. */
-    private JavaLibraryRules() {}
+  private JavaLibraryRules() {}
 
   public static void addCompileToJarSteps(
       BuildContext context,
@@ -83,10 +80,11 @@ public class JavaLibraryRules {
 
     // We don't want to add provided to the declared or transitive deps, since they're only used at
     // compile time.
-    ImmutableSortedSet<Path> compileTimeClasspathPaths = compileTimeClasspathSourcePaths
-        .stream()
-        .map(context.getSourcePathResolver()::getAbsolutePath)
-        .collect(MoreCollectors.toImmutableSortedSet());
+    ImmutableSortedSet<Path> compileTimeClasspathPaths =
+        compileTimeClasspathSourcePaths
+            .stream()
+            .map(context.getSourcePathResolver()::getAbsolutePath)
+            .collect(MoreCollectors.toImmutableSortedSet());
 
     // If there are resources, then link them to the appropriate place in the classes directory.
     JavaPackageFinder finder = context.getJavaPackageFinder();
@@ -128,15 +126,14 @@ public class JavaLibraryRules {
 
       Path scratchDir =
           BuildTargets.getGenPath(
-              rule.getProjectFilesystem(),
-              target,
-              "lib__%s____working_directory");
+              rule.getProjectFilesystem(), target, "lib__%s____working_directory");
       steps.addAll(MakeCleanDirectoryStep.of(rule.getProjectFilesystem(), scratchDir));
       Optional<Path> workingDirectory = Optional.of(scratchDir);
 
-      ImmutableSortedSet<Path> javaSrcs = srcs.stream()
-          .map(context.getSourcePathResolver()::getRelativePath)
-          .collect(MoreCollectors.toImmutableSortedSet());
+      ImmutableSortedSet<Path> javaSrcs =
+          srcs.stream()
+              .map(context.getSourcePathResolver()::getRelativePath)
+              .collect(MoreCollectors.toImmutableSortedSet());
 
       compileStepFactory.createCompileToJarStep(
           context,
@@ -166,15 +163,14 @@ public class JavaLibraryRules {
 
       // No source files, only resources
       if (srcs.isEmpty()) {
-        steps.add(
-            new JarDirectoryStep(
-                rule.getProjectFilesystem(),
-                output,
-                ImmutableSortedSet.of(outputDirectory),
-                /* mainClass */ null,
-                manifestFile.map(context.getSourcePathResolver()::getAbsolutePath).orElse(null),
-                true,
-                classesToRemoveFromJar));
+        compileStepFactory.createJarStep(
+            rule.getProjectFilesystem(),
+            outputDirectory,
+            Optional.empty(),
+            manifestFile.map(context.getSourcePathResolver()::getAbsolutePath),
+            classesToRemoveFromJar,
+            output,
+            steps);
       }
       buildableContext.recordArtifact(output);
     }
@@ -186,8 +182,9 @@ public class JavaLibraryRules {
       SourcePathResolver pathResolver,
       ImmutableList.Builder<Step> steps) {
 
-    Path pathToClassHashes = JavaLibraryRules.getPathToClassHashes(
-        javaLibrary.getBuildTarget(), javaLibrary.getProjectFilesystem());
+    Path pathToClassHashes =
+        JavaLibraryRules.getPathToClassHashes(
+            javaLibrary.getBuildTarget(), javaLibrary.getProjectFilesystem());
     steps.add(MkdirStep.of(javaLibrary.getProjectFilesystem(), pathToClassHashes.getParent()));
     steps.add(
         new AccumulateClassNamesStep(
@@ -199,14 +196,12 @@ public class JavaLibraryRules {
   }
 
   static JavaLibrary.Data initializeFromDisk(
-      BuildTarget buildTarget,
-      ProjectFilesystem filesystem,
-      OnDiskBuildInfo onDiskBuildInfo)
+      BuildTarget buildTarget, ProjectFilesystem filesystem, OnDiskBuildInfo onDiskBuildInfo)
       throws IOException {
     List<String> lines =
         onDiskBuildInfo.getOutputFileContentsByLine(getPathToClassHashes(buildTarget, filesystem));
-    ImmutableSortedMap<String, HashCode> classHashes = AccumulateClassNamesStep.parseClassHashes(
-        lines);
+    ImmutableSortedMap<String, HashCode> classHashes =
+        AccumulateClassNamesStep.parseClassHashes(lines);
 
     return new JavaLibrary.Data(classHashes);
   }
@@ -216,21 +211,20 @@ public class JavaLibraryRules {
   }
 
   /**
-   * @return all the transitive native libraries a rule depends on, represented as
-   *     a map from their system-specific library names to their {@link SourcePath} objects.
+   * @return all the transitive native libraries a rule depends on, represented as a map from their
+   *     system-specific library names to their {@link SourcePath} objects.
    */
   public static ImmutableMap<String, SourcePath> getNativeLibraries(
-      Iterable<BuildRule> deps,
-      final CxxPlatform cxxPlatform) throws NoSuchBuildTargetException {
-    return NativeLinkables.getTransitiveSharedLibraries(
-        cxxPlatform,
-        deps,
-        r -> r instanceof JavaLibrary);
+      Iterable<BuildRule> deps, final CxxPlatform cxxPlatform) throws NoSuchBuildTargetException {
+    // Allow the transitive walk to find NativeLinkables through the BuildRuleParams deps of a
+    // JavaLibrary or CalculateAbi object. The deps may be either one depending if we're compiling
+    // against ABI rules or full rules
+    Predicate<Object> traverse = r -> r instanceof JavaLibrary || r instanceof CalculateAbi;
+    return NativeLinkables.getTransitiveSharedLibraries(cxxPlatform, deps, traverse);
   }
 
   public static ImmutableSortedSet<BuildRule> getAbiRules(
-      BuildRuleResolver resolver,
-      Iterable<BuildRule> inputs) throws NoSuchBuildTargetException {
+      BuildRuleResolver resolver, Iterable<BuildRule> inputs) throws NoSuchBuildTargetException {
     ImmutableSortedSet.Builder<BuildRule> abiRules = ImmutableSortedSet.naturalOrder();
     for (BuildRule input : inputs) {
       if (input instanceof HasJavaAbi && ((HasJavaAbi) input).getAbiJar().isPresent()) {
@@ -243,11 +237,32 @@ public class JavaLibraryRules {
   }
 
   public static ImmutableSortedSet<SourcePath> getAbiSourcePaths(
-      BuildRuleResolver resolver,
-      Iterable<BuildRule> inputs) throws NoSuchBuildTargetException {
+      BuildRuleResolver resolver, Iterable<BuildRule> inputs) throws NoSuchBuildTargetException {
     return getAbiRules(resolver, inputs)
         .stream()
         .map(BuildRule::getSourcePathToOutput)
         .collect(MoreCollectors.toImmutableSortedSet());
+  }
+
+  /**
+   * Iterates the input BuildRules and translates them to their ABI rules when possible. This is
+   * necessary when constructing a BuildRuleParams object, for example, where we want to translate
+   * rules to their ABI rules, but not skip over BuildRules such as GenAidl, CxxLibrary, NdkLibrary,
+   * AndroidResource, etc. These should still be returned from this method, but without translation.
+   */
+  public static ImmutableSortedSet<BuildRule> getAbiRulesWherePossible(
+      BuildRuleResolver resolver, Iterable<BuildRule> inputs) throws NoSuchBuildTargetException {
+    ImmutableSortedSet.Builder<BuildRule> abiRules = ImmutableSortedSet.naturalOrder();
+    for (BuildRule dep : inputs) {
+      if (dep instanceof HasJavaAbi) {
+        Optional<BuildTarget> abiJarTarget = ((HasJavaAbi) dep).getAbiJar();
+        if (abiJarTarget.isPresent()) {
+          abiRules.add(resolver.requireRule(abiJarTarget.get()));
+        }
+      } else {
+        abiRules.add(dep);
+      }
+    }
+    return abiRules.build();
   }
 }

@@ -24,14 +24,13 @@ import com.facebook.buck.model.BuildTargetPattern;
 import com.facebook.buck.parser.BuildTargetPatternParser;
 import com.facebook.buck.rules.CellPathResolver;
 import com.facebook.buck.rules.FakeCellPathResolver;
+import com.facebook.buck.rules.coercer.DefaultTypeCoercerFactory;
 import com.facebook.buck.rules.query.Query;
 import com.facebook.buck.testutil.FakeProjectFilesystem;
 import com.google.common.collect.ImmutableMap;
-
+import java.util.Optional;
 import org.hamcrest.Matchers;
 import org.junit.Test;
-
-import java.util.Optional;
 
 public class QueryTargetTranslatorTest {
 
@@ -44,28 +43,23 @@ public class QueryTargetTranslatorTest {
   public void translateTargets() {
     BuildTarget a = BuildTargetFactory.newInstance("//:a");
     BuildTarget b = BuildTargetFactory.newInstance("//:b");
-    FixedTargetNodeTranslator translator = new FixedTargetNodeTranslator(ImmutableMap.of(a, b));
+    FixedTargetNodeTranslator translator =
+        new FixedTargetNodeTranslator(new DefaultTypeCoercerFactory(), ImmutableMap.of(a, b));
     QueryTargetTranslator queryTranslator = new QueryTargetTranslator();
     assertThat(
         queryTranslator.translateTargets(
-            CELL_PATH_RESOLVER,
-            PATTERN,
-            translator,
-            Query.of("deps(//:a)")),
+            CELL_PATH_RESOLVER, PATTERN, translator, Query.of("deps(//:a)")),
         Matchers.equalTo(Optional.of(Query.of("deps(//:b)"))));
   }
 
   @Test
   public void noTargets() {
-    FixedTargetNodeTranslator translator = new FixedTargetNodeTranslator(ImmutableMap.of());
+    FixedTargetNodeTranslator translator =
+        new FixedTargetNodeTranslator(new DefaultTypeCoercerFactory(), ImmutableMap.of());
     QueryTargetTranslator queryTranslator = new QueryTargetTranslator();
     assertThat(
         queryTranslator.translateTargets(
-            CELL_PATH_RESOLVER,
-            PATTERN,
-            translator,
-            Query.of("$declared_deps")),
+            CELL_PATH_RESOLVER, PATTERN, translator, Query.of("$declared_deps")),
         Matchers.equalTo(Optional.empty()));
   }
-
 }

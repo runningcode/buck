@@ -50,7 +50,7 @@ public class ReactNativeLibraryGraphEnhancer {
       BuildRuleResolver resolver,
       SourcePathRuleFinder ruleFinder,
       BuildTarget target,
-      ReactNativeLibraryArgs args,
+      CoreReactNativeLibraryArg args,
       ReactNativePlatform platform) {
     Tool jsPackager = buckConfig.getPackager(resolver);
     return new ReactNativeBundle(
@@ -59,19 +59,19 @@ public class ReactNativeLibraryGraphEnhancer {
             .copyReplacingDeclaredAndExtraDeps(
                 Suppliers.ofInstance(
                     ImmutableSortedSet.<BuildRule>naturalOrder()
-                        .addAll(ruleFinder.filterBuildRuleInputs(args.entryPath))
-                        .addAll(ruleFinder.filterBuildRuleInputs(args.srcs))
+                        .addAll(ruleFinder.filterBuildRuleInputs(args.getEntryPath()))
+                        .addAll(ruleFinder.filterBuildRuleInputs(args.getSrcs()))
                         .addAll(jsPackager.getDeps(ruleFinder))
                         .build()),
                 Suppliers.ofInstance(ImmutableSortedSet.of())),
-        args.entryPath,
-        args.srcs,
+        args.getEntryPath(),
+        args.getSrcs(),
         ReactNativeFlavors.useUnbundling(baseParams.getBuildTarget()),
         ReactNativeFlavors.useIndexedUnbundling(baseParams.getBuildTarget()),
         ReactNativeFlavors.isDevMode(baseParams.getBuildTarget()),
         ReactNativeFlavors.exposeSourceMap(baseParams.getBuildTarget()),
-        args.bundleName,
-        args.packagerFlags,
+        args.getBundleName(),
+        args.getPackagerFlags(),
         jsPackager,
         platform);
   }
@@ -79,7 +79,7 @@ public class ReactNativeLibraryGraphEnhancer {
   public AndroidReactNativeLibrary enhanceForAndroid(
       BuildRuleParams params,
       BuildRuleResolver resolver,
-      AndroidReactNativeLibraryDescription.Args args) {
+      AndroidReactNativeLibraryDescriptionArg args) {
 
     SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
     BuildTarget originalBuildTarget = params.getBuildTarget();
@@ -88,61 +88,50 @@ public class ReactNativeLibraryGraphEnhancer {
             params,
             resolver,
             ruleFinder,
-            BuildTarget.builder(originalBuildTarget)
-                .addFlavors(REACT_NATIVE_BUNDLE_FLAVOR)
-                .build(),
+            BuildTarget.builder(originalBuildTarget).addFlavors(REACT_NATIVE_BUNDLE_FLAVOR).build(),
             args,
             ReactNativePlatform.ANDROID);
     resolver.addToIndex(bundle);
 
     ImmutableList.Builder<BuildRule> extraDeps = ImmutableList.builder();
     extraDeps.add(bundle);
-    if (args.rDotJavaPackage.isPresent()) {
+    if (args.getPackage().isPresent()) {
       BuildRuleParams paramsForResource =
           params
               .withAppendedFlavor(REACT_NATIVE_ANDROID_RES_FLAVOR)
               .copyReplacingExtraDeps(Suppliers.ofInstance(ImmutableSortedSet.of(bundle)));
 
-      SourcePath resources = new ExplicitBuildTargetSourcePath(
-          bundle.getBuildTarget(),
-          bundle.getResources());
-      BuildRule resource = new AndroidResource(
-          paramsForResource,
-          ruleFinder,
-          /* deps */ ImmutableSortedSet.of(),
-          resources,
-          /* resSrcs */ ImmutableSortedMap.of(),
-          args.rDotJavaPackage.get(),
-          /* assets */ null,
-          /* assetsSrcs */ ImmutableSortedMap.of(),
-          /* manifest */ null,
-          /* hasWhitelistedStrings */ false);
+      SourcePath resources =
+          new ExplicitBuildTargetSourcePath(bundle.getBuildTarget(), bundle.getResources());
+      BuildRule resource =
+          new AndroidResource(
+              paramsForResource,
+              ruleFinder,
+              /* deps */ ImmutableSortedSet.of(),
+              resources,
+              /* resSrcs */ ImmutableSortedMap.of(),
+              args.getPackage().get(),
+              /* assets */ null,
+              /* assetsSrcs */ ImmutableSortedMap.of(),
+              /* manifest */ null,
+              /* hasWhitelistedStrings */ false);
       resolver.addToIndex(resource);
       extraDeps.add(resource);
 
-      Aapt2Compile aapt2Compile = new Aapt2Compile(
-          paramsForResource.withAppendedFlavor(
-              AndroidResourceDescription.AAPT2_COMPILE_FLAVOR),
-          resources);
+      Aapt2Compile aapt2Compile =
+          new Aapt2Compile(
+              paramsForResource.withAppendedFlavor(AndroidResourceDescription.AAPT2_COMPILE_FLAVOR),
+              resources);
       resolver.addToIndex(aapt2Compile);
     }
 
-    return new AndroidReactNativeLibrary(
-        params.copyAppendingExtraDeps(extraDeps.build()),
-        bundle);
+    return new AndroidReactNativeLibrary(params.copyAppendingExtraDeps(extraDeps.build()), bundle);
   }
 
   public ReactNativeBundle enhanceForIos(
-      BuildRuleParams params,
-      BuildRuleResolver resolver,
-      ReactNativeLibraryArgs args) {
+      BuildRuleParams params, BuildRuleResolver resolver, ReactNativeLibraryArg args) {
     SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
     return createReactNativeBundle(
-        params,
-        resolver,
-        ruleFinder,
-        params.getBuildTarget(),
-        args,
-        ReactNativePlatform.IOS);
+        params, resolver, ruleFinder, params.getBuildTarget(), args, ReactNativePlatform.IOS);
   }
 }

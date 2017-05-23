@@ -22,6 +22,7 @@ import com.facebook.buck.distributed.thrift.StampedeId;
 import com.facebook.buck.event.BuckEventBus;
 import com.facebook.buck.parser.Parser;
 import com.facebook.buck.rules.ActionGraphCache;
+import com.facebook.buck.rules.BuildInfoStoreManager;
 import com.facebook.buck.rules.Cell;
 import com.facebook.buck.step.ExecutorPool;
 import com.facebook.buck.timing.Clock;
@@ -31,10 +32,8 @@ import com.facebook.buck.util.environment.Platform;
 import com.facebook.buck.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.versions.VersionedTargetGraphCache;
 import com.google.common.util.concurrent.ListeningExecutorService;
-
-import org.immutables.value.Value;
-
 import java.util.Map;
+import org.immutables.value.Value;
 
 @Value.Immutable
 @BuckStyleImmutable
@@ -80,4 +79,6 @@ abstract class AbstractDistBuildExecutorArgs {
   }
 
   public abstract VersionedTargetGraphCache getVersionedTargetGraphCache();
+
+  public abstract BuildInfoStoreManager getBuildInfoStoreManager();
 }

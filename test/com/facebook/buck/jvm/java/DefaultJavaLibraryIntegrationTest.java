@@ -17,7 +17,6 @@
 package com.facebook.buck.jvm.java;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.nio.file.StandardOpenOption.WRITE;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.hasItem;
 import static org.hamcrest.CoreMatchers.is;
@@ -54,12 +53,6 @@ import com.google.common.collect.FluentIterable;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Ordering;
-
-import org.hamcrest.Matchers;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -70,6 +63,7 @@ import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
@@ -82,28 +76,33 @@ import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
+import org.hamcrest.Matchers;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
 
 /**
- * Integration test that verifies that a {@link DefaultJavaLibrary} writes its ABI key as part
- * of compilation.
+ * Integration test that verifies that a {@link DefaultJavaLibrary} writes its ABI key as part of
+ * compilation.
  */
 public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
 
-  @Rule
-  public TemporaryPaths tmp = new TemporaryPaths();
+  @Rule public TemporaryPaths tmp = new TemporaryPaths();
 
   private ProjectWorkspace workspace;
 
   private ProjectFilesystem filesystem;
 
   @Before
-  public void setUp() {
+  public void setUp() throws InterruptedException {
     assumeTrue(Platform.detect() == Platform.MACOS || Platform.detect() == Platform.LINUX);
     filesystem = new ProjectFilesystem(tmp.getRoot());
   }
 
   @Test
-  public void testBuildJavaLibraryWithoutSrcsAndVerifyAbi() throws IOException {
+  public void testBuildJavaLibraryWithoutSrcsAndVerifyAbi()
+      throws InterruptedException, IOException {
     setUpProjectWorkspaceForScenario("abi");
     workspace.enableDirCache();
 
@@ -113,9 +112,7 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
     buildResult.assertSuccess("Successful build should exit with 0.");
     Path outputPath =
         BuildTargets.getGenPath(
-            filesystem,
-            target,
-            "lib__%s__output/" + target.getShortName() + ".jar");
+            filesystem, target, "lib__%s__output/" + target.getShortName() + ".jar");
     Path outputFile = workspace.getPath(outputPath);
     assertTrue(Files.exists(outputFile));
     // TODO(mbolin): When we produce byte-for-byte identical JAR files across builds, do:
@@ -132,14 +129,15 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
     Path buildCache = workspace.getPath(filesystem.getBuckPaths().getCacheDir());
     assertTrue(Files.isDirectory(buildCache));
 
-    ArtifactCache dirCache = TestArtifactCaches.createDirCacheForTest(
-        workspace.getDestPath(),
-        buildCache);
+    ArtifactCache dirCache =
+        TestArtifactCaches.createDirCacheForTest(workspace.getDestPath(), buildCache);
 
     int totalArtifactsCount = DirArtifactCacheTestUtil.getAllFilesInCache(dirCache).size();
 
-    assertEquals("There should be two entries (a zip and metadata) in the build cache.",
-        2,
+    assertEquals(
+        "There should be two entries (a zip and metadata) per rule key type (default and input-"
+            + "based) in the build cache.",
+        4,
         totalArtifactsCount);
 
     // Run `buck clean`.
@@ -147,28 +145,32 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
     cleanResult.assertSuccess("Successful clean should exit with 0.");
 
     totalArtifactsCount = getAllFilesInPath(buildCache).size();
-    assertEquals("The build cache should still exist.", 2, totalArtifactsCount);
+    assertEquals("The build cache should still exist.", 4, totalArtifactsCount);
 
     // Corrupt the build cache!
     File artifactZip =
         FluentIterable.from(
-            ImmutableList.copyOf(DirArtifactCacheTestUtil.getAllFilesInCache(dirCache)))
+                ImmutableList.copyOf(DirArtifactCacheTestUtil.getAllFilesInCache(dirCache)))
             .toSortedList(Ordering.natural())
             .get(0)
             .toFile();
     FileSystem zipFs = FileSystems.newFileSystem(artifactZip.toPath(), /* loader */ null);
     Path outputInZip = zipFs.getPath("/" + outputPath.toString());
-    Files.write(outputInZip, "Hello world!".getBytes(), WRITE);
+    new ZipOutputStream(Files.newOutputStream(outputInZip, StandardOpenOption.TRUNCATE_EXISTING))
+        .close();
     zipFs.close();
 
     // Run `buck build` again.
     ProcessResult buildResult2 = workspace.runBuckCommand("build", target.getFullyQualifiedName());
     buildResult2.assertSuccess("Successful build should exit with 0.");
     assertTrue(Files.isRegularFile(outputFile));
+
+    ZipFile outputZipFile = new ZipFile(outputFile.toFile());
     assertEquals(
-        "The content of the output file will be 'Hello World!' if it is read from the build cache.",
-        "Hello world!",
-        new String(Files.readAllBytes(outputFile), UTF_8));
+        "The output file will be an empty zip if it is read from the build cache.",
+        0,
+        outputZipFile.stream().count());
+    outputZipFile.close();
 
     // Run `buck clean` followed by `buck build` yet again, but this time, specify `--no-cache`.
     ProcessResult cleanResult2 = workspace.runBuckCommand("clean");
@@ -176,13 +178,15 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
     ProcessResult buildResult3 =
         workspace.runBuckCommand("build", "--no-cache", target.getFullyQualifiedName());
     buildResult3.assertSuccess();
+    outputZipFile = new ZipFile(outputFile.toFile());
     assertNotEquals(
         "The contents of the file should no longer be pulled from the corrupted build cache.",
-        "Hello world!",
-        new String(Files.readAllBytes(outputFile), UTF_8));
+        0,
+        outputZipFile.stream().count());
+    outputZipFile.close();
     assertEquals(
-        "We cannot do a byte-for-byte comparision with the original JAR because timestamps might " +
-            "have changed, but we verify that they are the same size, as a proxy.",
+        "We cannot do a byte-for-byte comparision with the original JAR because timestamps might "
+            + "have changed, but we verify that they are the same size, as a proxy.",
         sizeOfOriginalJar,
         Files.size(outputFile));
   }
@@ -194,8 +198,8 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
     // Run `buck build`.
     ProcessResult buildResult = workspace.runBuckCommand("build", "//:foo");
     buildResult.assertFailure(
-        "Build should have failed since //:foo depends on Guava and " +
-            "Args4j but does not include it in its deps.");
+        "Build should have failed since //:foo depends on Guava and "
+            + "Args4j but does not include it in its deps.");
 
     workspace.verify();
   }
@@ -216,10 +220,8 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
     setUpProjectWorkspaceForScenario("warn_on_transitive");
 
     // Run `buck build`.
-    ProcessResult buildResult = workspace.runBuckCommand("build",
-        "//:raz",
-        "-b",
-        "FIRST_ORDER_ONLY");
+    ProcessResult buildResult =
+        workspace.runBuckCommand("build", "//:raz", "-b", "FIRST_ORDER_ONLY");
     buildResult.assertFailure("Build should have failed.");
 
     workspace.verify();
@@ -234,11 +236,10 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
     ProcessResult buildResult = workspace.runBuckBuild(target.getFullyQualifiedName());
     buildResult.assertSuccess();
 
-    Path outputFile = workspace.getPath(
-        BuildTargets.getGenPath(
-            filesystem,
-            target,
-            "lib__%s__output/" + target.getShortName() + ".jar"));
+    Path outputFile =
+        workspace.getPath(
+            BuildTargets.getGenPath(
+                filesystem, target, "lib__%s__output/" + target.getShortName() + ".jar"));
     assertTrue(Files.exists(outputFile));
 
     ImmutableSet.Builder<String> jarContents = ImmutableSet.builder();
@@ -251,10 +252,7 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
     // TODO(mread): Change the output to the intended output.
     assertEquals(
         jarContents.build(),
-        ImmutableSet.of(
-            "META-INF/MANIFEST.MF",
-            "swag.txt",
-            "yolo.txt"));
+        ImmutableSet.of("META-INF/", "META-INF/MANIFEST.MF", "swag.txt", "yolo.txt"));
 
     workspace.verify();
   }
@@ -284,15 +282,13 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
         BuildTargets.getScratchPath(filesystem, bizTarget, ".%s/metadata/INPUT_BASED_RULE_KEY");
     String bizAbiRuleKey = getContents(bizAbiRuleKeyPath);
 
-    Path utilOutputPath = BuildTargets.getGenPath(
-        filesystem,
-        utilTarget,
-        "lib__%s__output/" + utilTarget.getShortName() + ".jar");
+    Path utilOutputPath =
+        BuildTargets.getGenPath(
+            filesystem, utilTarget, "lib__%s__output/" + utilTarget.getShortName() + ".jar");
     long utilJarSize = Files.size(workspace.getPath(utilOutputPath));
-    Path bizOutputPath = BuildTargets.getGenPath(
-        filesystem,
-        bizTarget,
-        "lib__%s__output/" + bizTarget.getShortName() + ".jar");
+    Path bizOutputPath =
+        BuildTargets.getGenPath(
+            filesystem, bizTarget, "lib__%s__output/" + bizTarget.getShortName() + ".jar");
     FileTime bizJarLastModified = Files.getLastModifiedTime(workspace.getPath(bizOutputPath));
 
     // TODO(mbolin): Run uber-biz.jar and verify it prints "Hello World!\n".
@@ -305,8 +301,7 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
     buildResult2.assertSuccess("Successful build should exit with 0.");
 
     assertThat(utilRuleKey, not(equalTo(getContents(utilRuleKeyPath))));
-    assertThat(utilAbiRuleKey,
-        not(equalTo(getContents(utilAbiRuleKeyPath))));
+    assertThat(utilAbiRuleKey, not(equalTo(getContents(utilAbiRuleKeyPath))));
     workspace.getBuildLog().assertTargetBuiltLocally(utilTarget.toString());
 
     assertThat(bizRuleKey, not(equalTo(getContents(bizRuleKeyPath))));
@@ -331,6 +326,51 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
     // its own getAbiKeyForDeps().
     ProcessResult buildResult3 = workspace.runBuckCommand("build", "//:biz");
     buildResult3.assertSuccess("Successful build should exit with 0.");
+  }
+
+  @Test
+  public void testJavaLibraryOnlyDependsOnTheAbiVersionsOfItsDeps() throws IOException {
+    compileAgainstAbisOnly();
+    setUpProjectWorkspaceForScenario("depends_only_on_abi_test");
+    workspace.enableDirCache();
+
+    // Build A
+    ProcessResult firstBuildResult = workspace.runBuckBuild("//:a");
+    firstBuildResult.assertSuccess("Successful build should exit with 0.");
+
+    // Perform clean
+    ProcessResult cleanResult = workspace.runBuckCommand("clean");
+    cleanResult.assertSuccess("Successful clean should exit with 0.");
+
+    // Edit A
+    workspace.replaceFileContents("A.java", "getB", "getNewB");
+
+    // Rebuild A
+    ProcessResult secondBuildResult = workspace.runBuckBuild("//:a");
+    secondBuildResult.assertSuccess("Successful build should exit with 0.");
+
+    BuildTarget b = BuildTargetFactory.newInstance("//:b");
+    BuildTarget c = BuildTargetFactory.newInstance("//:c");
+    BuildTarget d = BuildTargetFactory.newInstance("//:d");
+
+    // Confirm that we got an input based rule key hit on B#abi, C#abi, D#abi
+    workspace
+        .getBuildLog()
+        .assertTargetWasFetchedFromCache(
+            b.withFlavors(HasJavaAbi.CLASS_ABI_FLAVOR).getFullyQualifiedName());
+    workspace
+        .getBuildLog()
+        .assertTargetWasFetchedFromCache(
+            c.withFlavors(HasJavaAbi.CLASS_ABI_FLAVOR).getFullyQualifiedName());
+    workspace
+        .getBuildLog()
+        .assertTargetWasFetchedFromCache(
+            d.withFlavors(HasJavaAbi.CLASS_ABI_FLAVOR).getFullyQualifiedName());
+
+    // Confirm that B, C, and D were not re-built
+    workspace.getBuildLog().assertNoLogEntry(b.getFullyQualifiedName());
+    workspace.getBuildLog().assertNoLogEntry(c.getFullyQualifiedName());
+    workspace.getBuildLog().assertNoLogEntry(d.getFullyQualifiedName());
   }
 
   @Test
@@ -457,8 +497,7 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
     setUpProjectWorkspaceForScenario("resource_in_dep_file");
 
     // Warm the used classes file
-    ProcessResult buildResult =
-        workspace.runBuckCommand("build", ":main");
+    ProcessResult buildResult = workspace.runBuckCommand("build", ":main");
     buildResult.assertSuccess("Successful build should exit with 0.");
 
     workspace.getBuildLog().assertTargetBuiltLocally("//:main");
@@ -539,13 +578,11 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
 
     // Add a new source file
     workspace.writeContentsToPath(
-        "package com.example; public class NewClass { }",
-        "NewClass.java");
+        "package com.example; public class NewClass { }", "NewClass.java");
 
     // Run `buck build` again.
-    ProcessResult buildResult2 = workspace.runBuckCommand(
-        "build",
-        mainTarget.getFullyQualifiedName());
+    ProcessResult buildResult2 =
+        workspace.runBuckCommand("build", mainTarget.getFullyQualifiedName());
     buildResult2.assertSuccess("Successful build should exit with 0.");
 
     // The new source file should result in a different manifest being downloaded and thus a
@@ -563,13 +600,10 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
         workspace.runBuckCommand("build", bizTarget.getFullyQualifiedName());
     buildResult.assertSuccess("Successful build should exit with 0.");
 
-    Path bizClassUsageFilePath = BuildTargets.getGenPath(
-        filesystem,
-        bizTarget,
-        "lib__%s__output/used-classes.json");
+    Path bizClassUsageFilePath =
+        BuildTargets.getGenPath(filesystem, bizTarget, "lib__%s__output/used-classes.json");
 
-    final List<String> lines = Files.readAllLines(
-        workspace.getPath(bizClassUsageFilePath), UTF_8);
+    final List<String> lines = Files.readAllLines(workspace.getPath(bizClassUsageFilePath), UTF_8);
 
     assertEquals("Expected just one line of JSON", 1, lines.size());
 
@@ -580,14 +614,15 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
     } else {
       utilJarPath = MorePaths.pathWithPlatformSeparators("buck-out/gen/lib__util__output/util.jar");
     }
-    final String utilClassPath =
-        MorePaths.pathWithPlatformSeparators("com/example/Util.class");
+    final String utilClassPath = MorePaths.pathWithPlatformSeparators("com/example/Util.class");
 
     JsonNode jsonNode = ObjectMappers.READER.readTree(lines.get(0));
-    assertThat(jsonNode,
-        new HasJsonField(utilJarPath,
+    assertThat(
+        jsonNode,
+        new HasJsonField(
+            utilJarPath,
             Matchers.equalTo(
-                ObjectMappers.legacyCreate().valueToTree(new String[]{utilClassPath}))));
+                ObjectMappers.legacyCreate().valueToTree(new String[] {utilClassPath}))));
   }
 
   @Test
@@ -618,16 +653,16 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
     // Run `buck build`.
     BuildTarget binaryTarget = BuildTargetFactory.newInstance("//:binary");
     BuildTarget binary2Target = BuildTargetFactory.newInstance("//:binary_2");
-    ProcessResult buildResult = workspace.runBuckCommand(
-        "build",
-        binaryTarget.getFullyQualifiedName(),
-        binary2Target.getFullyQualifiedName());
+    ProcessResult buildResult =
+        workspace.runBuckCommand(
+            "build", binaryTarget.getFullyQualifiedName(), binary2Target.getFullyQualifiedName());
     buildResult.assertSuccess("Successful build should exit with 0.");
 
     for (Path filename :
-        new Path[]{
-            BuildTargets.getGenPath(filesystem, binaryTarget, "%s.jar"),
-            BuildTargets.getGenPath(filesystem, binary2Target, "%s.jar")}) {
+        new Path[] {
+          BuildTargets.getGenPath(filesystem, binaryTarget, "%s.jar"),
+          BuildTargets.getGenPath(filesystem, binary2Target, "%s.jar")
+        }) {
       Path file = workspace.getPath(filename);
       try (Zip zip = new Zip(file, /* for writing? */ false)) {
         Set<String> allNames = zip.getFileNames();
@@ -688,8 +723,7 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
       classFiles.add(file.getName());
     }
     assertThat(
-        "There should be 2 class files saved to disk from the compiler",
-        classFiles, hasSize(2));
+        "There should be 2 class files saved to disk from the compiler", classFiles, hasSize(2));
     assertThat(classFiles, hasItem("A.class"));
     assertThat(classFiles, hasItem("B.class"));
   }
@@ -709,12 +743,15 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
     assertThat(Files.exists(classesDir), is(Boolean.TRUE));
     assertThat(
         "There should be no class files in disk",
-        ImmutableList.copyOf(classesDir.toFile().listFiles()), hasSize(0));
+        ImmutableList.copyOf(classesDir.toFile().listFiles()),
+        hasSize(0));
 
     Path jarPath =
         workspace.getPath(BuildTargets.getGenPath(filesystem, target, "lib__%s__output/a.jar"));
     assertTrue(Files.exists(jarPath));
     ZipInputStream zip = new ZipInputStream(new FileInputStream(jarPath.toFile()));
+    assertThat(zip.getNextEntry().getName(), is("META-INF/"));
+    assertThat(zip.getNextEntry().getName(), is("META-INF/MANIFEST.MF"));
     assertThat(zip.getNextEntry().getName(), is("A.class"));
     assertThat(zip.getNextEntry().getName(), is("B.class"));
     zip.close();
@@ -790,14 +827,16 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
     assertThat(Files.exists(classesDir), is(Boolean.TRUE));
     assertThat(
         "There should be no class files in disk",
-        ImmutableList.copyOf(classesDir.toFile().listFiles()), hasSize(0));
+        ImmutableList.copyOf(classesDir.toFile().listFiles()),
+        hasSize(0));
 
     Path sourcesDir =
         workspace.getPath(BuildTargets.getAnnotationPath(filesystem, target, "__%s_gen__"));
     assertThat(Files.exists(sourcesDir), is(Boolean.TRUE));
     assertThat(
         "There should one source file in disk, from the Immutable class.",
-        ImmutableList.copyOf(sourcesDir.toFile().listFiles()), hasSize(1));
+        ImmutableList.copyOf(sourcesDir.toFile().listFiles()),
+        hasSize(1));
 
     Path jarPath =
         workspace.getPath(BuildTargets.getGenPath(filesystem, target, "lib__%s__output/a.jar"));
@@ -821,16 +860,14 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
     Path path = workspace.buildAndReturnOutput("//:library");
 
     try (InputStream is = Files.newInputStream(path);
-    JarInputStream jis = new JarInputStream(is)) {
+        JarInputStream jis = new JarInputStream(is)) {
       Manifest manifest = jis.getManifest();
       String value = manifest.getEntries().get("Example").getValue("Data");
       assertEquals("cheese", value);
     }
   }
 
-  /**
-   * Asserts that the specified file exists and returns its contents.
-   */
+  /** Asserts that the specified file exists and returns its contents. */
   private String getContents(Path relativePathToFile) throws IOException {
     Path file = workspace.getPath(relativePathToFile);
     assertTrue(relativePathToFile + " should exist and be an ordinary file.", Files.exists(file));
@@ -839,7 +876,7 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
     return content;
   }
 
-  private ImmutableList<Path> getAllFilesInPath(Path path) throws  IOException {
+  private ImmutableList<Path> getAllFilesInPath(Path path) throws IOException {
     final List<Path> allFiles = new ArrayList<>();
     Files.walkFileTree(
         path,
@@ -847,8 +884,8 @@ public class DefaultJavaLibraryIntegrationTest extends AbiCompilationModeTest {
         Integer.MAX_VALUE,
         new SimpleFileVisitor<Path>() {
           @Override
-          public FileVisitResult visitFile(Path file,
-              BasicFileAttributes attrs) throws IOException {
+          public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
+              throws IOException {
             allFiles.add(file);
             return super.visitFile(file, attrs);
           }

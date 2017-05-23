@@ -24,6 +24,7 @@ import com.facebook.buck.distributed.thrift.BuildJobStateFileHashEntry;
 import com.facebook.buck.distributed.thrift.BuildJobStateFileHashes;
 import com.facebook.buck.distributed.thrift.BuildJobStateTargetGraph;
 import com.facebook.buck.distributed.thrift.BuildJobStateTargetNode;
+import com.facebook.buck.distributed.thrift.BuildMode;
 import com.facebook.buck.distributed.thrift.BuildSlaveConsoleEvent;
 import com.facebook.buck.distributed.thrift.BuildSlaveEvent;
 import com.facebook.buck.distributed.thrift.BuildSlaveEventType;
@@ -52,15 +53,6 @@ import com.facebook.buck.testutil.integration.TemporaryPaths;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
-
-import org.easymock.Capture;
-import org.easymock.EasyMock;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -71,21 +63,29 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.easymock.Capture;
+import org.easymock.EasyMock;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
 
 // TODO(ruibm, shivanker): Revisit these tests and clean them up.
 public class DistBuildServiceTest {
-  @Rule
-  public TemporaryPaths temporaryFolder = new TemporaryPaths();
+  @Rule public TemporaryPaths temporaryFolder = new TemporaryPaths();
 
   private FrontendService frontendService;
   private DistBuildService distBuildService;
   private ListeningExecutorService executor;
+  private DistBuildClientStatsTracker distBuildClientStatsTracker;
 
   @Before
   public void setUp() throws IOException, InterruptedException {
     frontendService = EasyMock.createStrictMock(FrontendService.class);
     executor = MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor());
     distBuildService = new DistBuildService(frontendService);
+    distBuildClientStatsTracker = new DistBuildClientStatsTracker();
   }
 
   @After
@@ -99,8 +99,9 @@ public class DistBuildServiceTest {
     FrontendResponse response = new FrontendResponse();
     response.setType(FrontendRequestType.STORE_BUILD_GRAPH);
     response.setWasSuccessful(true);
-    EasyMock.expect(frontendService.makeRequest(
-        EasyMock.capture(request))).andReturn(response).once();
+    EasyMock.expect(frontendService.makeRequest(EasyMock.capture(request)))
+        .andReturn(response)
+        .once();
 
     EasyMock.replay(frontendService);
 
@@ -118,7 +119,7 @@ public class DistBuildServiceTest {
     buildJobState.setTargetGraph(graph);
     StampedeId stampedeId = new StampedeId();
     stampedeId.setId("check-id");
-    distBuildService.uploadTargetGraph(buildJobState, stampedeId);
+    distBuildService.uploadTargetGraph(buildJobState, stampedeId, distBuildClientStatsTracker);
 
     Assert.assertTrue(request.getValue().isSetType());
     Assert.assertEquals(request.getValue().getType(), FrontendRequestType.STORE_BUILD_GRAPH);
@@ -127,8 +128,9 @@ public class DistBuildServiceTest {
     Assert.assertEquals(request.getValue().getStoreBuildGraphRequest().getStampedeId(), stampedeId);
     Assert.assertTrue(request.getValue().getStoreBuildGraphRequest().isSetBuildGraph());
 
-    BuildJobState sentState = BuildJobStateSerializer.deserialize(
-        request.getValue().getStoreBuildGraphRequest().getBuildGraph());
+    BuildJobState sentState =
+        BuildJobStateSerializer.deserialize(
+            request.getValue().getStoreBuildGraphRequest().getBuildGraph());
     Assert.assertTrue(buildJobState.equals(sentState));
   }
 
@@ -143,15 +145,17 @@ public class DistBuildServiceTest {
     casContainsResponse.setExists(fileExistence);
     containsResponse.setCasContainsResponse(casContainsResponse);
     containsResponse.setWasSuccessful(true);
-    EasyMock.expect(frontendService.makeRequest(EasyMock.capture(containsRequest))).andReturn(
-        containsResponse).once();
+    EasyMock.expect(frontendService.makeRequest(EasyMock.capture(containsRequest)))
+        .andReturn(containsResponse)
+        .once();
 
     Capture<FrontendRequest> storeRequest = EasyMock.newCapture();
     FrontendResponse storeResponse = new FrontendResponse();
     storeResponse.setType(FrontendRequestType.STORE_LOCAL_CHANGES);
     storeResponse.setWasSuccessful(true);
-    EasyMock.expect(frontendService.makeRequest(EasyMock.capture(storeRequest))).andReturn(
-        storeResponse).once();
+    EasyMock.expect(frontendService.makeRequest(EasyMock.capture(storeRequest)))
+        .andReturn(storeResponse)
+        .once();
 
     EasyMock.replay(frontendService);
 
@@ -173,7 +177,9 @@ public class DistBuildServiceTest {
     fileHashes.get(1).setCellIndex(1);
     fileHashes.get(1).setEntries(new ArrayList<BuildJobStateFileHashEntry>());
     fileHashes.get(1).getEntries().add(files[2]);
-    distBuildService.uploadMissingFilesAsync(fileHashes, executor).get();
+    distBuildService
+        .uploadMissingFilesAsync(fileHashes, distBuildClientStatsTracker, executor)
+        .get();
 
     Assert.assertEquals(containsRequest.getValue().getType(), FrontendRequestType.CAS_CONTAINS);
     Assert.assertTrue(containsRequest.getValue().isSetCasContainsRequest());
@@ -189,9 +195,10 @@ public class DistBuildServiceTest {
     Assert.assertEquals(
         storeRequest.getValue().getStoreLocalChangesRequest().getFiles().get(0).getContentHash(),
         "1");
-    Assert.assertTrue(Arrays.equals(
-        storeRequest.getValue().getStoreLocalChangesRequest().getFiles().get(0).getContent(),
-        "content1".getBytes()));
+    Assert.assertTrue(
+        Arrays.equals(
+            storeRequest.getValue().getStoreLocalChangesRequest().getFiles().get(0).getContent(),
+            "content1".getBytes()));
   }
 
   @Test
@@ -210,10 +217,11 @@ public class DistBuildServiceTest {
     response.setCreateBuildResponse(createBuildResponse);
     response.setWasSuccessful(true);
     EasyMock.expect(frontendService.makeRequest(EasyMock.capture(request)))
-        .andReturn(response).once();
+        .andReturn(response)
+        .once();
     EasyMock.replay(frontendService);
 
-    BuildJob job = distBuildService.createBuild();
+    BuildJob job = distBuildService.createBuild(BuildMode.REMOTE_BUILD, 1);
 
     Assert.assertEquals(request.getValue().getType(), FrontendRequestType.CREATE_BUILD);
     Assert.assertTrue(request.getValue().isSetCreateBuildRequest());
@@ -240,7 +248,8 @@ public class DistBuildServiceTest {
     response.setStartBuildResponse(startBuildResponse);
     response.setWasSuccessful(true);
     EasyMock.expect(frontendService.makeRequest(EasyMock.capture(request)))
-        .andReturn(response).once();
+        .andReturn(response)
+        .once();
     EasyMock.replay(frontendService);
 
     StampedeId id = new StampedeId();
@@ -272,7 +281,8 @@ public class DistBuildServiceTest {
     response.setBuildStatusResponse(buildStatusResponse);
     response.setWasSuccessful(true);
     EasyMock.expect(frontendService.makeRequest(EasyMock.capture(request)))
-        .andReturn(response).once();
+        .andReturn(response)
+        .once();
     EasyMock.replay(frontendService);
 
     StampedeId id = new StampedeId();
@@ -299,10 +309,11 @@ public class DistBuildServiceTest {
     RunId runId = new RunId();
     runId.setId("duper");
 
-    ImmutableList<BuildSlaveConsoleEvent> consoleEvents = ImmutableList.of(
-        new BuildSlaveConsoleEvent(),
-        new BuildSlaveConsoleEvent(),
-        new BuildSlaveConsoleEvent());
+    ImmutableList<BuildSlaveConsoleEvent> consoleEvents =
+        ImmutableList.of(
+            new BuildSlaveConsoleEvent(),
+            new BuildSlaveConsoleEvent(),
+            new BuildSlaveConsoleEvent());
     consoleEvents.get(0).setMessage("a");
     consoleEvents.get(1).setMessage("b");
     consoleEvents.get(2).setMessage("c");
@@ -315,52 +326,56 @@ public class DistBuildServiceTest {
     response.setType(FrontendRequestType.APPEND_BUILD_SLAVE_EVENTS);
     response.setAppendBuildSlaveEventsResponse(new AppendBuildSlaveEventsResponse());
     EasyMock.expect(frontendService.makeRequest(EasyMock.capture(request1)))
-        .andReturn(response).once();
+        .andReturn(response)
+        .once();
     EasyMock.expect(frontendService.makeRequest(EasyMock.capture(request2)))
-        .andAnswer(() -> {
-          List<ByteBuffer> receivedBinaryEvents =
-              request1.getValue().getAppendBuildSlaveEventsRequest().getEvents();
-          List<SequencedBuildSlaveEvent> sequencedEvents = IntStream.range(0, 3).mapToObj(i -> {
-            SequencedBuildSlaveEvent slaveEvent = new SequencedBuildSlaveEvent();
-            slaveEvent.setEventNumber(i);
-            slaveEvent.setEvent(receivedBinaryEvents.get(i));
-            return slaveEvent;
-          }).collect(Collectors.toList());
+        .andAnswer(
+            () -> {
+              List<ByteBuffer> receivedBinaryEvents =
+                  request1.getValue().getAppendBuildSlaveEventsRequest().getEvents();
+              List<SequencedBuildSlaveEvent> sequencedEvents =
+                  IntStream.range(0, 3)
+                      .mapToObj(
+                          i -> {
+                            SequencedBuildSlaveEvent slaveEvent = new SequencedBuildSlaveEvent();
+                            slaveEvent.setEventNumber(i);
+                            slaveEvent.setEvent(receivedBinaryEvents.get(i));
+                            return slaveEvent;
+                          })
+                      .collect(Collectors.toList());
 
-          BuildSlaveEventsQuery query = distBuildService.createBuildSlaveEventsQuery(
-              stampedeId,
-              runId,
-              2);
-          BuildSlaveEventsRange eventsRange = new BuildSlaveEventsRange();
-          eventsRange.setSuccess(true);
-          eventsRange.setQuery(query);
-          eventsRange.setEvents(sequencedEvents);
+              BuildSlaveEventsQuery query =
+                  distBuildService.createBuildSlaveEventsQuery(stampedeId, runId, 2);
+              BuildSlaveEventsRange eventsRange = new BuildSlaveEventsRange();
+              eventsRange.setSuccess(true);
+              eventsRange.setQuery(query);
+              eventsRange.setEvents(sequencedEvents);
 
-          MultiGetBuildSlaveEventsResponse eventsResponse = new MultiGetBuildSlaveEventsResponse();
-          eventsResponse.addToResponses(eventsRange);
-          FrontendResponse response2 = new FrontendResponse();
-          response2.setWasSuccessful(true);
-          response2.setType(FrontendRequestType.MULTI_GET_BUILD_SLAVE_EVENTS);
-          response2.setMultiGetBuildSlaveEventsResponse(eventsResponse);
-          return response2;
-        }).once();
+              MultiGetBuildSlaveEventsResponse eventsResponse =
+                  new MultiGetBuildSlaveEventsResponse();
+              eventsResponse.addToResponses(eventsRange);
+              FrontendResponse response2 = new FrontendResponse();
+              response2.setWasSuccessful(true);
+              response2.setType(FrontendRequestType.MULTI_GET_BUILD_SLAVE_EVENTS);
+              response2.setMultiGetBuildSlaveEventsResponse(eventsResponse);
+              return response2;
+            })
+        .once();
     EasyMock.replay(frontendService);
 
     distBuildService.uploadBuildSlaveConsoleEvents(stampedeId, runId, consoleEvents);
-    BuildSlaveEventsQuery query = distBuildService.createBuildSlaveEventsQuery(
-        stampedeId,
-        runId,
-        2);
-    List<Pair<Integer, BuildSlaveEvent>> events = distBuildService.multiGetBuildSlaveEvents(
-        ImmutableList.of(query));
+    BuildSlaveEventsQuery query =
+        distBuildService.createBuildSlaveEventsQuery(stampedeId, runId, 2);
+    List<Pair<Integer, BuildSlaveEvent>> events =
+        distBuildService.multiGetBuildSlaveEvents(ImmutableList.of(query));
 
     // Verify correct events are received.
     Assert.assertEquals(events.size(), 3);
     Assert.assertEquals((int) events.get(0).getFirst(), 0);
     Assert.assertEquals((int) events.get(1).getFirst(), 1);
     Assert.assertEquals((int) events.get(2).getFirst(), 2);
-    List<BuildSlaveEvent> buildSlaveEvents = events.stream().map(x -> x.getSecond()).collect(
-        Collectors.toList());
+    List<BuildSlaveEvent> buildSlaveEvents =
+        events.stream().map(x -> x.getSecond()).collect(Collectors.toList());
     for (int i = 0; i < 3; ++i) {
       BuildSlaveEvent event = buildSlaveEvents.get(i);
       Assert.assertEquals(event.getEventType(), BuildSlaveEventType.CONSOLE_EVENT);
@@ -388,8 +403,7 @@ public class DistBuildServiceTest {
     receivedRequest = request2.getValue();
     Assert.assertTrue(receivedRequest.isSetType());
     Assert.assertEquals(
-        receivedRequest.getType(),
-        FrontendRequestType.MULTI_GET_BUILD_SLAVE_EVENTS);
+        receivedRequest.getType(), FrontendRequestType.MULTI_GET_BUILD_SLAVE_EVENTS);
     Assert.assertTrue(receivedRequest.isSetMultiGetBuildSlaveEventsRequest());
 
     MultiGetBuildSlaveEventsRequest eventsRequest =
@@ -430,25 +444,27 @@ public class DistBuildServiceTest {
     response.setType(FrontendRequestType.UPDATE_BUILD_SLAVE_STATUS);
     response.setUpdateBuildSlaveStatusResponse(new UpdateBuildSlaveStatusResponse());
     EasyMock.expect(frontendService.makeRequest(EasyMock.capture(request1)))
-        .andReturn(response).once();
+        .andReturn(response)
+        .once();
     EasyMock.expect(frontendService.makeRequest(EasyMock.capture(request2)))
-        .andAnswer(() -> {
-          FetchBuildSlaveStatusResponse statusResponse = new FetchBuildSlaveStatusResponse();
-          statusResponse.setBuildSlaveStatus(
-              request1.getValue().getUpdateBuildSlaveStatusRequest().getBuildSlaveStatus());
+        .andAnswer(
+            () -> {
+              FetchBuildSlaveStatusResponse statusResponse = new FetchBuildSlaveStatusResponse();
+              statusResponse.setBuildSlaveStatus(
+                  request1.getValue().getUpdateBuildSlaveStatusRequest().getBuildSlaveStatus());
 
-          FrontendResponse response2 = new FrontendResponse();
-          response2.setWasSuccessful(true);
-          response2.setType(FrontendRequestType.FETCH_BUILD_SLAVE_STATUS);
-          response2.setFetchBuildSlaveStatusResponse(statusResponse);
-          return response2;
-        }).once();
+              FrontendResponse response2 = new FrontendResponse();
+              response2.setWasSuccessful(true);
+              response2.setType(FrontendRequestType.FETCH_BUILD_SLAVE_STATUS);
+              response2.setFetchBuildSlaveStatusResponse(statusResponse);
+              return response2;
+            })
+        .once();
     EasyMock.replay(frontendService);
 
     distBuildService.updateBuildSlaveStatus(stampedeId, runId, slaveStatus);
-    BuildSlaveStatus receivedStatus = distBuildService.fetchBuildSlaveStatus(
-        stampedeId,
-        runId).get();
+    BuildSlaveStatus receivedStatus =
+        distBuildService.fetchBuildSlaveStatus(stampedeId, runId).get();
     Assert.assertEquals(receivedStatus, slaveStatus);
 
     // Verify validity of first request.
@@ -468,9 +484,7 @@ public class DistBuildServiceTest {
     // Verify validity of second request.
     receivedRequest = request2.getValue();
     Assert.assertTrue(receivedRequest.isSetType());
-    Assert.assertEquals(
-        receivedRequest.getType(),
-        FrontendRequestType.FETCH_BUILD_SLAVE_STATUS);
+    Assert.assertEquals(receivedRequest.getType(), FrontendRequestType.FETCH_BUILD_SLAVE_STATUS);
     Assert.assertTrue(receivedRequest.isSetFetchBuildSlaveStatusRequest());
 
     FetchBuildSlaveStatusRequest statusRequest = receivedRequest.getFetchBuildSlaveStatusRequest();

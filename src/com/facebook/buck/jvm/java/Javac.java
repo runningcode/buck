@@ -23,16 +23,14 @@ import com.facebook.buck.util.Escaper;
 import com.google.common.base.Function;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSortedSet;
-
 import java.nio.file.Path;
 import java.util.Optional;
 
 public interface Javac extends RuleKeyAppendable, Tool {
 
-  /**
-   * An escaper for arguments written to @argfiles.
-   */
+  /** An escaper for arguments written to @argfiles. */
   Function<String, String> ARGFILES_ESCAPER = Escaper.javacEscaper();
+
   String SRC_ZIP = ".src.zip";
   String SRC_JAR = "-sources.jar";
 
@@ -42,11 +40,12 @@ public interface Javac extends RuleKeyAppendable, Tool {
       JavacExecutionContext context,
       BuildTarget invokingRule,
       ImmutableList<String> options,
-      ImmutableList<ResolvedJavacPluginProperties> annotationProcessors,
+      ImmutableList<JavacPluginJsr199Fields> pluginFields,
       ImmutableSortedSet<Path> javaSourceFilePaths,
       Path pathToSrcsList,
       Optional<Path> workingDirectory,
-      CompilationMode compilationMode) throws InterruptedException;
+      JavacCompilationMode compilationMode)
+      throws InterruptedException;
 
   String getDescription(
       ImmutableList<String> options,
@@ -56,13 +55,9 @@ public interface Javac extends RuleKeyAppendable, Tool {
   String getShortName();
 
   enum Location {
-    /**
-     * Perform compilation inside main process.
-     */
+    /** Perform compilation inside main process. */
     IN_PROCESS,
-    /**
-     * Delegate compilation into separate process.
-     */
+    /** Delegate compilation into separate process. */
     OUT_OF_PROCESS,
   }
 
@@ -73,30 +68,5 @@ public interface Javac extends RuleKeyAppendable, Tool {
     JAR,
     /** Run javac in-process, loading it from the JRE in which Buck is running. */
     JDK,
-  }
-
-  enum CompilationMode {
-    /**
-     * Normal compilation. Generates full jars.
-     */
-    FULL,
-    /**
-     * Normal compilation with additional checking of type and constant references for
-     * compatibility with generating ABI jars from source without dependencies. This mode
-     * issues warnings when incompatibilities are detected and is thus intended for use during
-     * migration.
-     */
-    FULL_CHECKING_REFERENCES,
-    /**
-     * Normal compilation with additional checking of type and constant references for
-     * compatibility with generating ABI jars from source wtihout dependencies. This mode
-     * issues errors when incompatibilities are detected; it is the backstop that ensures the
-     * build will fail if an incorrect ABI jar is generated.
-     */
-    FULL_ENFORCING_REFERENCES,
-    /**
-     * Compile ABIs only. Generates an ABI jar.
-     */
-    ABI,
   }
 }

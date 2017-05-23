@@ -9,24 +9,27 @@
       <configuration>
         <option name="GEN_FOLDER_RELATIVE_PATH_APT" value="%androidFacet.module_gen_path%" />
         <option name="GEN_FOLDER_RELATIVE_PATH_AIDL" value="%androidFacet.module_gen_path%" />
+%if(androidFacet.android_manifest)%
         <option name="MANIFEST_FILE_RELATIVE_PATH" value="%androidFacet.android_manifest%" />
+%endif%
         <option name="RES_FOLDERS_RELATIVE_PATH" value="%androidFacet.res%" />
         <option name="RES_FOLDER_RELATIVE_PATH" value="/src/main/res" />
+%if(androidFacet.asset_folder)%
         <option name="ASSETS_FOLDER_RELATIVE_PATH" value="%androidFacet.asset_folder%" />
-        <option name="LIBS_FOLDER_RELATIVE_PATH" value="%androidFacet.libs_path%" />
+%endif%
+%if(androidFacet.apk_path)%
         <option name="APK_PATH" value="%androidFacet.apk_path%" />
+%endif%
         <option name="LIBRARY_PROJECT" value="%androidFacet.is_android_library_project%" />
-        <option name="RUN_PROCESS_RESOURCES_MAVEN_TASK" value="true" />
-        <option name="GENERATE_UNSIGNED_APK" value="false" />
+%if(androidFacet.keystore)%
         <option name="CUSTOM_DEBUG_KEYSTORE_PATH" value="%androidFacet.keystore%" />
-        <option name="PACK_TEST_CODE" value="false" />
-        <option name="RUN_PROGUARD" value="%androidFacet.run_proguard%" />
+%endif%
+%if(androidFacet.proguard_config)%
         <option name="PROGUARD_CFG_PATH" value="%androidFacet.proguard_config%" />
+%endif%
+        <option name="UPDATE_PROPERTY_FILES" value="false" />
         <option name="ENABLE_SOURCES_AUTOGENERATION" value="%androidFacet.autogenerate_sources%" />
-        <resOverlayFolders />
-        <includeSystemProguardFile>false</includeSystemProguardFile>
         <includeAssetsFromLibraries>true</includeAssetsFromLibraries>
-        <additionalNativeLibs />
       </configuration>
     </facet>
   </component>
@@ -37,14 +40,6 @@
   <component name="NewModuleRootManager" inherit-compiler-output="true">
 %endif%
     <exclude-output />
-    <content url="%contentRoot.url%">
-%contentRoot.folders:{folder |
-      <%folder.type% url="%folder.url%" %\\%
-        isTestSource="%folder.isTestSource%" %\\%
-        %if(folder.packagePrefix)% packagePrefix="%folder.packagePrefix%"%endif%%\\%
-        %if(folder.isAndroidResources)% type="java-resource" %endif%/>
-}%
-    </content>
 %if(androidFacet.enabled)%
     <content url="file://$MODULE_DIR$%androidFacet.module_gen_path%">
       <sourceFolder url="file://$MODULE_DIR$%androidFacet.module_gen_path%" isTestSource="false" />
@@ -54,24 +49,27 @@
     <content url="%generatedFolder.url%">
       <%generatedFolder.type% url="%generatedFolder.url%" %\\%
         isTestSource="%generatedFolder.isTestSource%" generated="true" %\\%
-        %if(generatedFolder.packagePrefix)% packagePrefix="%generatedFolder.packagePrefix%"%endif%%\\%
-        %if(generatedFolder.isAndroidResources)% type="java-resource" %endif%/>
+        %if(generatedFolder.packagePrefix)%packagePrefix="%generatedFolder.packagePrefix%" %endif%%\\%
+        %if(generatedFolder.isAndroidResources)%type="java-resource" %endif%/>
     </content>
-}%
-%if(sdk)%
-    <orderEntry type="jdk" jdkName="%sdk%" jdkType="%sdkType%" />
-%else%
-    <orderEntry type="inheritedJdk" />
+}%    <content url="%contentRoot.url%">
+%contentRoot.folders:{folder |
+      <%folder.type% url="%folder.url%" %\\%
+        isTestSource="%folder.isTestSource%" %\\%
+        %if(folder.packagePrefix)%packagePrefix="%folder.packagePrefix%" %endif%%\\%
+        %if(folder.isAndroidResources)%type="java-resource" %endif%/>
+}%    </content>
+%if(sdk)%    <orderEntry type="jdk" jdkName="%sdk%" jdkType="%sdkType%" />
+%else%    <orderEntry type="inheritedJdk" />
 %endif%
     <orderEntry type="sourceFolder" forTests="false" />
 %dependencies:{dep |
   %if(dep.module)%
     <orderEntry type="%dep.type%" module-name="%dep.module.name%" scope="%dep.module.scope%" %\\%
-      %if(dep.module.exported)% exported="" %endif% />
+      %if(dep.module.exported)%exported="" %endif%/>
   %elseif(dep.library)%
     <orderEntry type="%dep.type%" name="%dep.library.name%" scope="%dep.library.scope%" %\\%
-      level="project" %if(dep.library.exported)% exported="" %endif% />
+      level="project" %if(dep.library.exported)%exported="" %endif%/>
   %endif%
-}%
-  </component>
+}%  </component>
 </module>

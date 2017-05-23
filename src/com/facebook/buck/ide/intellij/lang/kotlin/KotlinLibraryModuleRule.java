@@ -16,16 +16,17 @@
 package com.facebook.buck.ide.intellij.lang.kotlin;
 
 import com.facebook.buck.ide.intellij.BaseIjModuleRule;
+import com.facebook.buck.ide.intellij.ModuleBuildContext;
 import com.facebook.buck.ide.intellij.model.IjModuleFactoryResolver;
 import com.facebook.buck.ide.intellij.model.IjModuleType;
 import com.facebook.buck.ide.intellij.model.IjProjectConfig;
-import com.facebook.buck.ide.intellij.ModuleBuildContext;
 import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.jvm.kotlin.KotlinLibraryDescription;
+import com.facebook.buck.jvm.kotlin.KotlinLibraryDescriptionArg;
 import com.facebook.buck.rules.Description;
 import com.facebook.buck.rules.TargetNode;
 
-public class KotlinLibraryModuleRule extends BaseIjModuleRule<KotlinLibraryDescription.Arg> {
+public class KotlinLibraryModuleRule extends BaseIjModuleRule<KotlinLibraryDescriptionArg> {
 
   public KotlinLibraryModuleRule(
       ProjectFilesystem projectFilesystem,
@@ -40,17 +41,12 @@ public class KotlinLibraryModuleRule extends BaseIjModuleRule<KotlinLibraryDescr
   }
 
   @Override
-  public void apply(
-      TargetNode<KotlinLibraryDescription.Arg, ?> target,
-      ModuleBuildContext context) {
-    addDepsAndSources(
-        target,
-        false /* wantsPackagePrefix */,
-        context);
+  public void apply(TargetNode<KotlinLibraryDescriptionArg, ?> target, ModuleBuildContext context) {
+    addDepsAndSources(target, false /* wantsPackagePrefix */, context);
   }
 
   @Override
-  public IjModuleType detectModuleType(TargetNode<KotlinLibraryDescription.Arg, ?> targetNode) {
+  public IjModuleType detectModuleType(TargetNode<KotlinLibraryDescriptionArg, ?> targetNode) {
     return IjModuleType.UNKNOWN_MODULE;
   }
 }

@@ -45,14 +45,12 @@ import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.ImmutableSortedSet;
-
-import org.immutables.value.Value;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
+import org.immutables.value.Value;
 
 public class AndroidNativeLibsPackageableGraphEnhancer {
 
@@ -67,12 +65,13 @@ public class AndroidNativeLibsPackageableGraphEnhancer {
   private final CxxBuckConfig cxxBuckConfig;
   private final Optional<Map<String, List<Pattern>>> nativeLibraryMergeMap;
   private final Optional<BuildTarget> nativeLibraryMergeGlue;
+  private final Optional<ImmutableSortedSet<String>> nativeLibraryMergeLocalizedSymbols;
   private final RelinkerMode relinkerMode;
   private final APKModuleGraph apkModuleGraph;
 
   /**
-   * Maps a {@link NdkCxxPlatforms.TargetCpuType} to the {@link CxxPlatform} we need to use to build C/C++
-   * libraries for it.
+   * Maps a {@link NdkCxxPlatforms.TargetCpuType} to the {@link CxxPlatform} we need to use to build
+   * C/C++ libraries for it.
    */
   private final ImmutableMap<NdkCxxPlatforms.TargetCpuType, NdkCxxPlatform> nativePlatforms;
 
@@ -84,10 +83,12 @@ public class AndroidNativeLibsPackageableGraphEnhancer {
       CxxBuckConfig cxxBuckConfig,
       Optional<Map<String, List<Pattern>>> nativeLibraryMergeMap,
       Optional<BuildTarget> nativeLibraryMergeGlue,
+      Optional<ImmutableSortedSet<String>> nativeLibraryMergeLocalizedSymbols,
       RelinkerMode relinkerMode,
       APKModuleGraph apkModuleGraph) {
     this.originalBuildTarget = originalParams.getBuildTarget();
     this.ruleFinder = new SourcePathRuleFinder(ruleResolver);
+    this.nativeLibraryMergeLocalizedSymbols = nativeLibraryMergeLocalizedSymbols;
     this.pathResolver = new SourcePathResolver(ruleFinder);
     this.buildRuleParams = originalParams;
     this.ruleResolver = ruleResolver;
@@ -104,6 +105,7 @@ public class AndroidNativeLibsPackageableGraphEnhancer {
   @BuckStyleImmutable
   interface AbstractAndroidNativeLibsGraphEnhancementResult {
     Optional<ImmutableMap<APKModule, CopyNativeLibraries>> getCopyNativeLibraries();
+
     Optional<ImmutableSortedMap<String, String>> getSonameMergeMap();
   }
 
@@ -113,19 +115,18 @@ public class AndroidNativeLibsPackageableGraphEnhancer {
       Iterable<NativeLinkable> linkables,
       ImmutableMap.Builder<Pair<NdkCxxPlatforms.TargetCpuType, String>, SourcePath> builder,
       NdkCxxPlatforms.TargetCpuType targetCpuType,
-      NdkCxxPlatform platform) throws NoSuchBuildTargetException {
+      NdkCxxPlatform platform)
+      throws NoSuchBuildTargetException {
 
     boolean hasNativeLibs = false;
 
     for (NativeLinkable nativeLinkable : linkables) {
-      if (nativeLinkable.getPreferredLinkage(platform.getCxxPlatform()) !=
-          NativeLinkable.Linkage.STATIC) {
-        ImmutableMap<String, SourcePath> solibs = nativeLinkable.getSharedLibraries(
-            platform.getCxxPlatform());
+      if (nativeLinkable.getPreferredLinkage(platform.getCxxPlatform())
+          != NativeLinkable.Linkage.STATIC) {
+        ImmutableMap<String, SourcePath> solibs =
+            nativeLinkable.getSharedLibraries(platform.getCxxPlatform());
         for (Map.Entry<String, SourcePath> entry : solibs.entrySet()) {
-          builder.put(
-              new Pair<>(targetCpuType, entry.getKey()),
-              entry.getValue());
+          builder.put(new Pair<>(targetCpuType, entry.getKey()), entry.getValue());
           hasNativeLibs = true;
         }
       }
@@ -145,17 +146,19 @@ public class AndroidNativeLibsPackageableGraphEnhancer {
         packageableCollection.getNativeLinkablesAssets();
 
     if (nativeLibraryMergeMap.isPresent() && !nativeLibraryMergeMap.get().isEmpty()) {
-      NativeLibraryMergeEnhancementResult enhancement = NativeLibraryMergeEnhancer.enhance(
-          cxxBuckConfig,
-          ruleResolver,
-          pathResolver,
-          ruleFinder,
-          buildRuleParams,
-          nativePlatforms,
-          nativeLibraryMergeMap.get(),
-          nativeLibraryMergeGlue,
-          nativeLinkables,
-          nativeLinkablesAssets);
+      NativeLibraryMergeEnhancementResult enhancement =
+          NativeLibraryMergeEnhancer.enhance(
+              cxxBuckConfig,
+              ruleResolver,
+              pathResolver,
+              ruleFinder,
+              buildRuleParams,
+              nativePlatforms,
+              nativeLibraryMergeMap.get(),
+              nativeLibraryMergeGlue,
+              nativeLibraryMergeLocalizedSymbols,
+              nativeLinkables,
+              nativeLinkablesAssets);
       nativeLinkables = enhancement.getMergedLinkables();
       nativeLinkablesAssets = enhancement.getMergedLinkablesAssets();
       resultBuilder.setSonameMergeMap(enhancement.getSonameMapping());
@@ -170,17 +173,15 @@ public class AndroidNativeLibsPackageableGraphEnhancer {
 
     boolean hasCopyNativeLibraries = false;
     List<NdkCxxPlatform> platformsWithNativeLibs = new ArrayList<>();
-    List<NdkCxxPlatform>  platformsWithNativeLibsAssets = new ArrayList<>();
+    List<NdkCxxPlatform> platformsWithNativeLibsAssets = new ArrayList<>();
 
     // Make sure we process the root module last so that we know if any of the module contain
     // libraries that depend on a non-system runtime and add it to the root module if needed.
     ImmutableSet<APKModule> apkModules =
-      FluentIterable
-          .from(apkModuleGraph.getAPKModules())
-          .filter(input -> !input.isRootModule())
-          .append(apkModuleGraph.getRootAPKModule())
-          .toSet();
-
+        FluentIterable.from(apkModuleGraph.getAPKModules())
+            .filter(input -> !input.isRootModule())
+            .append(apkModuleGraph.getRootAPKModule())
+            .toSet();
 
     for (APKModule module : apkModules) {
       ImmutableMap.Builder<Pair<NdkCxxPlatforms.TargetCpuType, String>, SourcePath>
@@ -195,39 +196,34 @@ public class AndroidNativeLibsPackageableGraphEnhancer {
       ImmutableSet<NdkCxxPlatforms.TargetCpuType> filters =
           cpuFilters.isEmpty() ? nativePlatforms.keySet() : cpuFilters;
       for (NdkCxxPlatforms.TargetCpuType targetCpuType : filters) {
-        NdkCxxPlatform platform = Preconditions.checkNotNull(
-            nativePlatforms.get(targetCpuType),
-            "Unknown platform type " + targetCpuType.toString());
-
+        NdkCxxPlatform platform =
+            Preconditions.checkNotNull(
+                nativePlatforms.get(targetCpuType),
+                "Unknown platform type " + targetCpuType.toString());
 
         // Populate nativeLinkableLibs and nativeLinkableLibsAssets with the appropriate entries.
         if (populateMapWithLinkables(
-              nativeLinkables.get(module),
-              nativeLinkableLibsBuilder,
-              targetCpuType,
-              platform) &&
-            !platformsWithNativeLibs.contains(platform)) {
+                nativeLinkables.get(module), nativeLinkableLibsBuilder, targetCpuType, platform)
+            && !platformsWithNativeLibs.contains(platform)) {
           platformsWithNativeLibs.add(platform);
         }
         if (populateMapWithLinkables(
-              nativeLinkablesAssets.get(module),
-              nativeLinkableLibsAssetsBuilder,
-              targetCpuType,
-              platform) &&
-            !platformsWithNativeLibsAssets.contains(platform)) {
+                nativeLinkablesAssets.get(module),
+                nativeLinkableLibsAssetsBuilder,
+                targetCpuType,
+                platform)
+            && !platformsWithNativeLibsAssets.contains(platform)) {
           platformsWithNativeLibsAssets.add(platform);
         }
 
         if (module.isRootModule()) {
           // If we're using a C/C++ runtime other than the system one, add it to the APK.
-          NdkCxxPlatforms.CxxRuntime cxxRuntime = platform.getCxxRuntime();
-          if ((platformsWithNativeLibs.contains(platform) ||
-                platformsWithNativeLibsAssets.contains(platform)) &&
-              !cxxRuntime.equals(NdkCxxPlatforms.CxxRuntime.SYSTEM)) {
+          NdkCxxRuntime cxxRuntime = platform.getCxxRuntime();
+          if ((platformsWithNativeLibs.contains(platform)
+                  || platformsWithNativeLibsAssets.contains(platform))
+              && !cxxRuntime.equals(NdkCxxRuntime.SYSTEM)) {
             nativeLinkableLibsBuilder.put(
-                new Pair<>(
-                    targetCpuType,
-                    cxxRuntime.getSoname()),
+                new Pair<>(targetCpuType, cxxRuntime.getSoname()),
                 new PathSourcePath(
                     buildRuleParams.getProjectFilesystem(),
                     platform.getCxxSharedRuntimePath().get()));
@@ -241,24 +237,22 @@ public class AndroidNativeLibsPackageableGraphEnhancer {
       ImmutableMap<Pair<NdkCxxPlatforms.TargetCpuType, String>, SourcePath>
           nativeLinkableLibsAssets = nativeLinkableLibsAssetsBuilder.build();
 
-      if (packageableCollection.getNativeLibsDirectories().get(module).isEmpty() &&
-          nativeLinkableLibs.isEmpty() &&
-          nativeLinkableLibsAssets.isEmpty()) {
+      if (packageableCollection.getNativeLibsDirectories().get(module).isEmpty()
+          && nativeLinkableLibs.isEmpty()
+          && nativeLinkableLibsAssets.isEmpty()) {
         continue;
       }
 
-      if (relinkerMode == RelinkerMode.ENABLED &&
-          (!nativeLinkableLibs.isEmpty() || !nativeLinkableLibsAssets.isEmpty())) {
+      if (relinkerMode == RelinkerMode.ENABLED
+          && (!nativeLinkableLibs.isEmpty() || !nativeLinkableLibsAssets.isEmpty())) {
         NativeRelinker relinker =
             new NativeRelinker(
                 buildRuleParams.copyReplacingExtraDeps(
                     Suppliers.ofInstance(
                         ImmutableSortedSet.<BuildRule>naturalOrder()
+                            .addAll(ruleFinder.filterBuildRuleInputs(nativeLinkableLibs.values()))
                             .addAll(
-                                ruleFinder.filterBuildRuleInputs(nativeLinkableLibs.values()))
-                            .addAll(
-                                ruleFinder.filterBuildRuleInputs(
-                                    nativeLinkableLibsAssets.values()))
+                                ruleFinder.filterBuildRuleInputs(nativeLinkableLibsAssets.values()))
                             .build())),
                 pathResolver,
                 ruleFinder,
@@ -291,23 +285,25 @@ public class AndroidNativeLibsPackageableGraphEnhancer {
               nativePlatforms,
               nativeLinkableLibsAssets);
 
-      ImmutableSortedSet<BuildRule> nativeLibsRules = BuildRules.toBuildRulesFor(
-          originalBuildTarget,
-          ruleResolver,
-          packageableCollection.getNativeLibsTargets().get(module));
-      BuildRuleParams paramsForCopyNativeLibraries = buildRuleParams
-          .withAppendedFlavor(InternalFlavor.of(COPY_NATIVE_LIBS + "_" + module.getName()))
-          .copyReplacingDeclaredAndExtraDeps(
-              Suppliers.ofInstance(
-                  ImmutableSortedSet.<BuildRule>naturalOrder()
-                      .addAll(nativeLibsRules)
-                      .addAll(
-                          ruleFinder.filterBuildRuleInputs(
-                              packageableCollection.getNativeLibsDirectories().get(module)))
-                      .addAll(strippedLibsMap.keySet())
-                      .addAll(strippedLibsAssetsMap.keySet())
-                      .build()),
-              Suppliers.ofInstance(ImmutableSortedSet.of()));
+      ImmutableSortedSet<BuildRule> nativeLibsRules =
+          BuildRules.toBuildRulesFor(
+              originalBuildTarget,
+              ruleResolver,
+              packageableCollection.getNativeLibsTargets().get(module));
+      BuildRuleParams paramsForCopyNativeLibraries =
+          buildRuleParams
+              .withAppendedFlavor(InternalFlavor.of(COPY_NATIVE_LIBS + "_" + module.getName()))
+              .copyReplacingDeclaredAndExtraDeps(
+                  Suppliers.ofInstance(
+                      ImmutableSortedSet.<BuildRule>naturalOrder()
+                          .addAll(nativeLibsRules)
+                          .addAll(
+                              ruleFinder.filterBuildRuleInputs(
+                                  packageableCollection.getNativeLibsDirectories().get(module)))
+                          .addAll(strippedLibsMap.keySet())
+                          .addAll(strippedLibsAssetsMap.keySet())
+                          .build()),
+                  Suppliers.ofInstance(ImmutableSortedSet.of()));
       moduleMappedCopyNativeLibriesBuilder.put(
           module,
           new CopyNativeLibraries(
@@ -321,11 +317,10 @@ public class AndroidNativeLibsPackageableGraphEnhancer {
     }
     return resultBuilder
         .setCopyNativeLibraries(
-            hasCopyNativeLibraries ?
-                Optional.of(moduleMappedCopyNativeLibriesBuilder.build()) :
-                Optional.empty())
+            hasCopyNativeLibraries
+                ? Optional.of(moduleMappedCopyNativeLibriesBuilder.build())
+                : Optional.empty())
         .build();
-
   }
 
   // Note: this method produces rules that will be shared between multiple apps,
@@ -343,8 +338,7 @@ public class AndroidNativeLibsPackageableGraphEnhancer {
       SourcePath sourcePath = entry.getValue();
       NdkCxxPlatforms.TargetCpuType targetCpuType = entry.getKey().getFirst();
 
-      NdkCxxPlatform platform =
-          Preconditions.checkNotNull(nativePlatforms.get(targetCpuType));
+      NdkCxxPlatform platform = Preconditions.checkNotNull(nativePlatforms.get(targetCpuType));
 
       // To be safe, default to using the app rule target as the base for the strip rule.
       // This will be used for stripping the C++ runtime.  We could use something more easily
@@ -354,35 +348,38 @@ public class AndroidNativeLibsPackageableGraphEnhancer {
       // But if we're stripping a cxx_library, use that library as the base of the target
       // to allow sharing the rule between all apps that depend on it.
       if (sourcePath instanceof BuildTargetSourcePath) {
-        baseBuildTarget = ((BuildTargetSourcePath<?>) sourcePath).getTarget();
+        baseBuildTarget = ((BuildTargetSourcePath) sourcePath).getTarget();
       }
 
       String sharedLibrarySoName = entry.getKey().getSecond();
-      BuildTarget targetForStripRule = BuildTarget.builder(baseBuildTarget)
-          .addFlavors(InternalFlavor.of("android-strip"))
-          .addFlavors(InternalFlavor.of(Flavor.replaceInvalidCharacters(sharedLibrarySoName)))
-          .addFlavors(InternalFlavor.of(Flavor.replaceInvalidCharacters(targetCpuType.name())))
-          .build();
+      BuildTarget targetForStripRule =
+          BuildTarget.builder(baseBuildTarget)
+              .addFlavors(InternalFlavor.of("android-strip"))
+              .addFlavors(InternalFlavor.of(Flavor.replaceInvalidCharacters(sharedLibrarySoName)))
+              .addFlavors(InternalFlavor.of(Flavor.replaceInvalidCharacters(targetCpuType.name())))
+              .build();
 
       Optional<BuildRule> previouslyCreated = ruleResolver.getRuleOptional(targetForStripRule);
       StripLinkable stripLinkable;
       if (previouslyCreated.isPresent()) {
         stripLinkable = (StripLinkable) previouslyCreated.get();
       } else {
-        BuildRuleParams paramsForStripLinkable = buildRuleParams
-            .withBuildTarget(targetForStripRule)
-            .copyReplacingDeclaredAndExtraDeps(
-                Suppliers.ofInstance(
-                    ImmutableSortedSet.<BuildRule>naturalOrder()
-                        .addAll(ruleFinder.filterBuildRuleInputs(ImmutableList.of(sourcePath)))
-                        .build()),
-                Suppliers.ofInstance(ImmutableSortedSet.of()));
+        BuildRuleParams paramsForStripLinkable =
+            buildRuleParams
+                .withBuildTarget(targetForStripRule)
+                .copyReplacingDeclaredAndExtraDeps(
+                    Suppliers.ofInstance(
+                        ImmutableSortedSet.<BuildRule>naturalOrder()
+                            .addAll(ruleFinder.filterBuildRuleInputs(ImmutableList.of(sourcePath)))
+                            .build()),
+                    Suppliers.ofInstance(ImmutableSortedSet.of()));
 
-        stripLinkable = new StripLinkable(
-            paramsForStripLinkable,
-            platform.getCxxPlatform().getStrip(),
-            sourcePath,
-            sharedLibrarySoName);
+        stripLinkable =
+            new StripLinkable(
+                paramsForStripLinkable,
+                platform.getCxxPlatform().getStrip(),
+                sourcePath,
+                sharedLibrarySoName);
 
         ruleResolver.addToIndex(stripLinkable);
       }

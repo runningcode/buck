@@ -40,15 +40,15 @@ import com.facebook.buck.rules.SourcePath;
 import com.facebook.buck.rules.SourcePathRuleFinder;
 import com.facebook.buck.rules.TargetGraph;
 import com.facebook.buck.util.DependencyMode;
-import com.facebook.infer.annotation.SuppressFieldNotInitialized;
+import com.facebook.buck.util.immutables.BuckStyleImmutable;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Suppliers;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSortedSet;
-
 import java.util.Optional;
+import org.immutables.value.Value;
 
-public class RobolectricTestDescription implements Description<RobolectricTestDescription.Arg> {
+public class RobolectricTestDescription implements Description<RobolectricTestDescriptionArg> {
 
 
   private final JavaBuckConfig javaBuckConfig;
@@ -71,43 +71,26 @@ public class RobolectricTestDescription implements Description<RobolectricTestDe
   }
 
   @Override
-  public Arg createUnpopulatedConstructorArg() {
-    return new Arg();
+  public Class<RobolectricTestDescriptionArg> getConstructorArgType() {
+    return RobolectricTestDescriptionArg.class;
   }
 
   @Override
-  public <A extends Arg> BuildRule createBuildRule(
+  public BuildRule createBuildRule(
       TargetGraph targetGraph,
       BuildRuleParams params,
       BuildRuleResolver resolver,
       CellPathResolver cellRoots,
-      A args) throws NoSuchBuildTargetException {
+      RobolectricTestDescriptionArg args)
+      throws NoSuchBuildTargetException {
     SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
 
-    JavacOptions javacOptions =
-        JavacOptionsFactory.create(
-            templateOptions,
-            params,
-            resolver,
-            args);
-
-    AndroidLibraryGraphEnhancer graphEnhancer = new AndroidLibraryGraphEnhancer(
-        params.getBuildTarget(),
-        params.copyReplacingExtraDeps(
-            Suppliers.ofInstance(resolver.getAllRules(args.exportedDeps))),
-        JavacFactory.create(ruleFinder, javaBuckConfig, args),
-        javacOptions,
-        DependencyMode.TRANSITIVE,
-        args.forceFinalResourceIds,
-        /* resourceUnionPackage */ Optional.empty(),
-        /* rName */ Optional.empty(),
-        args.useOldStyleableFormat);
-
     if (HasJavaAbi.isClassAbiTarget(params.getBuildTarget())) {
-      if (params.getBuildTarget().getFlavors().contains(
-          AndroidLibraryGraphEnhancer.DUMMY_R_DOT_JAVA_FLAVOR)) {
-        return graphEnhancer.getBuildableForAndroidResourcesAbi(resolver, ruleFinder);
-      }
+      Preconditions.checkArgument(
+          !params
+              .getBuildTarget()
+              .getFlavors()
+              .contains(AndroidLibraryGraphEnhancer.DUMMY_R_DOT_JAVA_FLAVOR));
       BuildTarget testTarget = HasJavaAbi.getLibraryTarget(params.getBuildTarget());
       BuildRule testRule = resolver.requireRule(testTarget);
       return CalculateAbiFromClasses.of(
@@ -117,39 +100,54 @@ public class RobolectricTestDescription implements Description<RobolectricTestDe
           Preconditions.checkNotNull(testRule.getSourcePathToOutput()));
     }
 
-    ImmutableList<String> vmArgs = args.vmArgs;
+    JavacOptions javacOptions = JavacOptionsFactory.create(templateOptions, params, resolver, args);
 
-    Optional<DummyRDotJava> dummyRDotJava = graphEnhancer.getBuildableForAndroidResources(
-        resolver,
-        /* createBuildableIfEmpty */ true);
+    AndroidLibraryGraphEnhancer graphEnhancer =
+        new AndroidLibraryGraphEnhancer(
+            params.getBuildTarget(),
+            params.copyReplacingExtraDeps(
+                Suppliers.ofInstance(resolver.getAllRules(args.getExportedDeps()))),
+            JavacFactory.create(ruleFinder, javaBuckConfig, args),
+            javacOptions,
+            DependencyMode.TRANSITIVE,
+            args.isForceFinalResourceIds(),
+            /* resourceUnionPackage */ Optional.empty(),
+            /* rName */ Optional.empty(),
+            args.isUseOldStyleableFormat());
+
+    ImmutableList<String> vmArgs = args.getVmArgs();
+
+    Optional<DummyRDotJava> dummyRDotJava =
+        graphEnhancer.getBuildableForAndroidResources(resolver, /* createBuildableIfEmpty */ true);
 
     if (dummyRDotJava.isPresent()) {
-      ImmutableSortedSet<BuildRule> newDeclaredDeps = ImmutableSortedSet.<BuildRule>naturalOrder()
-          .addAll(params.getDeclaredDeps().get())
-          .add(dummyRDotJava.get())
-          .build();
-      params = params.copyReplacingDeclaredAndExtraDeps(
-          Suppliers.ofInstance(newDeclaredDeps),
-          params.getExtraDeps());
+      ImmutableSortedSet<BuildRule> newDeclaredDeps =
+          ImmutableSortedSet.<BuildRule>naturalOrder()
+              .addAll(params.getDeclaredDeps().get())
+              .add(dummyRDotJava.get())
+              .build();
+      params =
+          params.copyReplacingDeclaredAndExtraDeps(
+              Suppliers.ofInstance(newDeclaredDeps), params.getExtraDeps());
     }
 
     JavaTestDescription.CxxLibraryEnhancement cxxLibraryEnhancement =
         new JavaTestDescription.CxxLibraryEnhancement(
             params,
-            args.useCxxLibraries,
-            args.cxxLibraryWhitelist,
+            args.getUseCxxLibraries(),
+            args.getCxxLibraryWhitelist(),
             resolver,
             ruleFinder,
             cxxPlatform);
     params = cxxLibraryEnhancement.updatedParams;
 
-    BuildRuleParams testsLibraryParams = params
-        .withAppendedFlavor(JavaTest.COMPILED_TESTS_LIBRARY_FLAVOR);
+    BuildRuleParams testsLibraryParams =
+        params.withAppendedFlavor(JavaTest.COMPILED_TESTS_LIBRARY_FLAVOR);
 
     JavaLibrary testsLibrary =
         resolver.addToIndex(
-            DefaultJavaLibrary
-                .builder(testsLibraryParams, resolver, javaBuckConfig)
+            DefaultJavaLibrary.builder(
+                    targetGraph, testsLibraryParams, resolver, cellRoots, javaBuckConfig)
                 .setArgs(args)
                 .setJavacOptions(javacOptions)
                 .setJavacOptionsAmender(new BootClasspathAppender())
@@ -157,36 +155,46 @@ public class RobolectricTestDescription implements Description<RobolectricTestDe
                 .setTrackClassUsage(javacOptions.trackClassUsage())
                 .build());
 
-
     return new RobolectricTest(
         params.copyReplacingDeclaredAndExtraDeps(
             Suppliers.ofInstance(ImmutableSortedSet.of(testsLibrary)),
             Suppliers.ofInstance(ImmutableSortedSet.of())),
         ruleFinder,
         testsLibrary,
-        args.labels,
-        args.contacts,
+        args.getLabels(),
+        args.getContacts(),
         TestType.JUNIT,
         javaOptions,
         vmArgs,
         cxxLibraryEnhancement.nativeLibsEnvironment,
         dummyRDotJava,
-        args.testRuleTimeoutMs.map(Optional::of).orElse(defaultTestRuleTimeoutMs),
-        args.testCaseTimeoutMs,
-        args.env,
+        args.getTestRuleTimeoutMs().map(Optional::of).orElse(defaultTestRuleTimeoutMs),
+        args.getTestCaseTimeoutMs(),
+        args.getEnv(),
         args.getRunTestSeparately(),
         args.getForkMode(),
-        args.stdOutLogLevel,
-        args.stdErrLogLevel,
-        args.robolectricRuntimeDependency,
-        args.robolectricManifest);
+        args.getStdOutLogLevel(),
+        args.getStdErrLogLevel(),
+        args.getRobolectricRuntimeDependency(),
+        args.getRobolectricManifest());
   }
 
-  @SuppressFieldNotInitialized
-  public static class Arg extends JavaTestDescription.Arg {
-    public Optional<String> robolectricRuntimeDependency;
-    public Optional<SourcePath> robolectricManifest;
-    public boolean useOldStyleableFormat = false;
-    public boolean forceFinalResourceIds = true;
+  @BuckStyleImmutable
+  @Value.Immutable
+  interface AbstractRobolectricTestDescriptionArg extends JavaTestDescription.CoreArg {
+    Optional<String> getRobolectricRuntimeDependency();
+
+    Optional<SourcePath> getRobolectricManifest();
+
+    @Value.Default
+    default boolean isUseOldStyleableFormat() {
+      return false;
+    }
+
+    @Value.Default
+    default boolean isForceFinalResourceIds() {
+      return true;
+    }
+
   }
 }

@@ -30,13 +30,12 @@ import com.facebook.buck.util.versioncontrol.HgCmdLineInterface;
 import com.facebook.eden.thrift.EdenError;
 import com.facebook.thrift.TException;
 import com.google.common.collect.ImmutableMap;
-
 import java.nio.file.Path;
 import java.util.Optional;
 
 /**
- * {@link ProjectFilesystemDelegateFactory} mediates the creation of a
- * {@link ProjectFilesystemDelegate} for a {@link ProjectFilesystem} root.
+ * {@link ProjectFilesystemDelegateFactory} mediates the creation of a {@link
+ * ProjectFilesystemDelegate} for a {@link ProjectFilesystem} root.
  */
 public final class ProjectFilesystemDelegateFactory {
 
@@ -45,13 +44,9 @@ public final class ProjectFilesystemDelegateFactory {
   /** Utility class: do not instantiate. */
   private ProjectFilesystemDelegateFactory() {}
 
-  /**
-   * Must always create a new delegate for the specified {@code root}.
-   */
+  /** Must always create a new delegate for the specified {@code root}. */
   public static ProjectFilesystemDelegate newInstance(
-      Path root,
-      String hgCmd,
-      AutoSparseConfig autoSparseConfig) {
+      Path root, String hgCmd, AutoSparseConfig autoSparseConfig) throws InterruptedException {
     Optional<EdenClient> client = tryToCreateEdenClient();
 
     if (client.isPresent()) {
@@ -68,19 +63,15 @@ public final class ProjectFilesystemDelegateFactory {
     }
 
     if (autoSparseConfig.enabled()) {
-      // We can't access BuckConfig because that class requires a
-      // ProjectFileSystem, which we are in the process of building
-      // Access the required info from the Config instead
-      HgCmdLineInterface hgCmdLine = new HgCmdLineInterface(
-          new PrintStreamProcessExecutorFactory(),
-          root,
-          hgCmd,
-          ImmutableMap.of()
-      );
-      AutoSparseState autoSparseState = AbstractAutoSparseFactory.getAutoSparseState(
-          root,
-          hgCmdLine,
-          autoSparseConfig);
+      // Grab a copy of the current environment; Mercurial sometimes cares (or more specifically,
+      // a remote connection command like ssh cares). We rather not pass in an environment via the
+      // ProjectFilesystem here because that'd make the ProjectFilesystem variant on the env, not
+      // a can of worms you want to go open just to make Mercurial happy.
+      ImmutableMap<String, String> environment = ImmutableMap.copyOf(System.getenv());
+      HgCmdLineInterface hgCmdLine =
+          new HgCmdLineInterface(new PrintStreamProcessExecutorFactory(), root, hgCmd, environment);
+      AutoSparseState autoSparseState =
+          AbstractAutoSparseFactory.getAutoSparseState(root, hgCmdLine, autoSparseConfig);
       if (autoSparseState != null) {
         LOG.debug("Autosparse enabled, using AutoSparseProjectFilesystemDelegate");
         return new AutoSparseProjectFilesystemDelegate(autoSparseState, root);

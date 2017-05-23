@@ -16,7 +16,6 @@
 
 package com.facebook.buck.parser;
 
-
 import static com.facebook.buck.parser.ParserConfig.DEFAULT_BUILD_FILE_NAME;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assume.assumeTrue;
@@ -36,20 +35,13 @@ import com.facebook.buck.testutil.TestConsole;
 import com.facebook.buck.timing.FakeClock;
 import com.facebook.buck.util.FakeProcess;
 import com.facebook.buck.util.FakeProcessExecutor;
-import com.facebook.buck.util.ProcessExecutor;
 import com.facebook.buck.util.ObjectMappers;
+import com.facebook.buck.util.ProcessExecutor;
 import com.facebook.buck.util.environment.Platform;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.eventbus.Subscribe;
-
-import org.hamcrest.Matchers;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -61,13 +53,18 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
+import org.hamcrest.Matchers;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.ExpectedException;
 
 public class ProjectBuildFileParserTest {
 
   private Cell cell;
 
-  @Rule
-  public ExpectedException thrown = ExpectedException.none();
+  @Rule public ExpectedException thrown = ExpectedException.none();
 
   @Before
   public void createCell() throws IOException, InterruptedException {
@@ -103,7 +100,7 @@ public class ProjectBuildFileParserTest {
     TestProjectBuildFileParserFactory buildFileParserFactory =
         new TestProjectBuildFileParserFactory(cell.getRoot(), cell.getKnownBuildRuleTypes());
     try (ProjectBuildFileParser buildFileParser =
-             buildFileParserFactory.createNoopParserThatAlwaysReturnsSuccess()) {
+        buildFileParserFactory.createNoopParserThatAlwaysReturnsSuccess()) {
       buildFileParser.initIfNeeded();
       // close() is called implicitly at the end of this block. It must not throw.
     }
@@ -115,7 +112,7 @@ public class ProjectBuildFileParserTest {
     TestProjectBuildFileParserFactory buildFileParserFactory =
         new TestProjectBuildFileParserFactory(cell.getRoot(), cell.getKnownBuildRuleTypes());
     try (ProjectBuildFileParser buildFileParser =
-             buildFileParserFactory.createNoopParserThatAlwaysReturnsError()) {
+        buildFileParserFactory.createNoopParserThatAlwaysReturnsError()) {
       buildFileParser.initIfNeeded();
       // close() is called implicitly at the end of this block. It must throw.
     }
@@ -140,10 +137,10 @@ public class ProjectBuildFileParserTest {
     EventListener eventListener = new EventListener();
     buckEventBus.register(eventListener);
     try (ProjectBuildFileParser buildFileParser =
-             buildFileParserFactory.createNoopParserThatAlwaysReturnsSuccessAndPrintsToStderr(
-                 buckEventBus)) {
+        buildFileParserFactory.createNoopParserThatAlwaysReturnsSuccessAndPrintsToStderr(
+            buckEventBus)) {
       buildFileParser.initIfNeeded();
-      buildFileParser.getAllRulesAndMetaRules(Paths.get("foo"));
+      buildFileParser.getAllRulesAndMetaRules(Paths.get("foo"), new AtomicLong());
     }
     assertThat(
         consoleEvents,
@@ -176,10 +173,10 @@ public class ProjectBuildFileParserTest {
     EventListener eventListener = new EventListener();
     buckEventBus.register(eventListener);
     try (ProjectBuildFileParser buildFileParser =
-             buildFileParserFactory.createNoopParserThatAlwaysReturnsSuccessWithWarning(
-                 buckEventBus, "This is a warning", "parser")) {
+        buildFileParserFactory.createNoopParserThatAlwaysReturnsSuccessWithWarning(
+            buckEventBus, "This is a warning", "parser")) {
       buildFileParser.initIfNeeded();
-      buildFileParser.getAllRulesAndMetaRules(Paths.get("foo"));
+      buildFileParser.getAllRulesAndMetaRules(Paths.get("foo"), new AtomicLong());
     }
     assertThat(
         consoleEvents,
@@ -210,10 +207,10 @@ public class ProjectBuildFileParserTest {
     EventListener eventListener = new EventListener();
     buckEventBus.register(eventListener);
     try (ProjectBuildFileParser buildFileParser =
-             buildFileParserFactory.createNoopParserThatAlwaysReturnsSuccessWithWarning(
-                 buckEventBus, "This is a watchman warning", "watchman")) {
+        buildFileParserFactory.createNoopParserThatAlwaysReturnsSuccessWithWarning(
+            buckEventBus, "This is a watchman warning", "watchman")) {
       buildFileParser.initIfNeeded();
-      buildFileParser.getAllRulesAndMetaRules(Paths.get("foo"));
+      buildFileParser.getAllRulesAndMetaRules(Paths.get("foo"), new AtomicLong());
     }
     assertThat(
         watchmanDiagnosticEvents,
@@ -240,10 +237,10 @@ public class ProjectBuildFileParserTest {
     EventListener eventListener = new EventListener();
     buckEventBus.register(eventListener);
     try (ProjectBuildFileParser buildFileParser =
-             buildFileParserFactory.createNoopParserThatAlwaysReturnsSuccessWithError(
-                 buckEventBus, "This is an error", "parser")) {
+        buildFileParserFactory.createNoopParserThatAlwaysReturnsSuccessWithError(
+            buckEventBus, "This is an error", "parser")) {
       buildFileParser.initIfNeeded();
-      buildFileParser.getAllRulesAndMetaRules(Paths.get("foo"));
+      buildFileParser.getAllRulesAndMetaRules(Paths.get("foo"), new AtomicLong());
     }
     assertThat(
         consoleEvents,
@@ -261,33 +258,34 @@ public class ProjectBuildFileParserTest {
         new TestProjectBuildFileParserFactory(cell.getRoot(), cell.getKnownBuildRuleTypes());
     thrown.expect(BuildFileParseException.class);
     thrown.expectMessage(
-        "Parse error for build file foo/BUCK:\n" +
-        "Syntax error on line 23, column 16:\n" +
-        "java_test(name=*@!&#(!@&*()\n" +
-        "               ^");
+        "Parse error for build file foo/BUCK:\n"
+            + "Syntax error on line 23, column 16:\n"
+            + "java_test(name=*@!&#(!@&*()\n"
+            + "               ^");
 
     try (ProjectBuildFileParser buildFileParser =
-             buildFileParserFactory.createNoopParserThatAlwaysReturnsErrorWithException(
-                 BuckEventBusFactory.newInstance(new FakeClock(0)),
-                 "This is an error",
-                 "parser",
-                 ImmutableMap.<String, Object>builder()
-                     .put("type", "SyntaxError")
-                     .put("value", "You messed up")
-                     .put("filename", "foo/BUCK")
-                     .put("lineno", 23)
-                     .put("offset", 16)
-                     .put("text", "java_test(name=*@!&#(!@&*()\n")
-                     .put("traceback", ImmutableList.of(
-                          ImmutableMap.of(
-                              "filename", "foo/BUCK",
-                              "line_number", 23,
-                              "function_name", "<module>",
-                              "text", "java_test(name=*@!&#(!@&*()\n"
-                          )))
-                     .build())) {
+        buildFileParserFactory.createNoopParserThatAlwaysReturnsErrorWithException(
+            BuckEventBusFactory.newInstance(new FakeClock(0)),
+            "This is an error",
+            "parser",
+            ImmutableMap.<String, Object>builder()
+                .put("type", "SyntaxError")
+                .put("value", "You messed up")
+                .put("filename", "foo/BUCK")
+                .put("lineno", 23)
+                .put("offset", 16)
+                .put("text", "java_test(name=*@!&#(!@&*()\n")
+                .put(
+                    "traceback",
+                    ImmutableList.of(
+                        ImmutableMap.of(
+                            "filename", "foo/BUCK",
+                            "line_number", 23,
+                            "function_name", "<module>",
+                            "text", "java_test(name=*@!&#(!@&*()\n")))
+                .build())) {
       buildFileParser.initIfNeeded();
-      buildFileParser.getAllRulesAndMetaRules(Paths.get("foo/BUCK"));
+      buildFileParser.getAllRulesAndMetaRules(Paths.get("foo/BUCK"), new AtomicLong());
     }
   }
 
@@ -301,31 +299,32 @@ public class ProjectBuildFileParserTest {
         new TestProjectBuildFileParserFactory(cell.getRoot(), cell.getKnownBuildRuleTypes());
     thrown.expect(BuildFileParseException.class);
     thrown.expectMessage(
-        "Parse error for build file foo/BUCK:\n" +
-            "Syntax error on line 23:\n" +
-            "java_test(name=*@!&#(!@&*()");
+        "Parse error for build file foo/BUCK:\n"
+            + "Syntax error on line 23:\n"
+            + "java_test(name=*@!&#(!@&*()");
 
     try (ProjectBuildFileParser buildFileParser =
-             buildFileParserFactory.createNoopParserThatAlwaysReturnsErrorWithException(
-                 BuckEventBusFactory.newInstance(new FakeClock(0)),
-                 "This is an error",
-                 "parser",
-                 ImmutableMap.<String, Object>builder()
-                     .put("type", "SyntaxError")
-                     .put("value", "You messed up")
-                     .put("filename", "foo/BUCK")
-                     .put("lineno", 23)
-                     .put("text", "java_test(name=*@!&#(!@&*()\n")
-                     .put("traceback", ImmutableList.of(
-                         ImmutableMap.of(
-                             "filename", "foo/BUCK",
-                             "line_number", 23,
-                             "function_name", "<module>",
-                             "text", "java_test(name=*@!&#(!@&*()\n"
-                         )))
-                     .build())) {
+        buildFileParserFactory.createNoopParserThatAlwaysReturnsErrorWithException(
+            BuckEventBusFactory.newInstance(new FakeClock(0)),
+            "This is an error",
+            "parser",
+            ImmutableMap.<String, Object>builder()
+                .put("type", "SyntaxError")
+                .put("value", "You messed up")
+                .put("filename", "foo/BUCK")
+                .put("lineno", 23)
+                .put("text", "java_test(name=*@!&#(!@&*()\n")
+                .put(
+                    "traceback",
+                    ImmutableList.of(
+                        ImmutableMap.of(
+                            "filename", "foo/BUCK",
+                            "line_number", 23,
+                            "function_name", "<module>",
+                            "text", "java_test(name=*@!&#(!@&*()\n")))
+                .build())) {
       buildFileParser.initIfNeeded();
-      buildFileParser.getAllRulesAndMetaRules(Paths.get("foo/BUCK"));
+      buildFileParser.getAllRulesAndMetaRules(Paths.get("foo/BUCK"), new AtomicLong());
     }
   }
 
@@ -349,40 +348,40 @@ public class ProjectBuildFileParserTest {
     buckEventBus.register(eventListener);
     thrown.expect(BuildFileParseException.class);
     thrown.expectMessage(
-        "Parse error for build file foo/BUCK:\n" +
-        "Syntax error in bar/BUCK\n" +
-        "Line 42, column 24:\n" +
-        "def some_helper_method(!@87*@!#\n" +
-        "                       ^");
+        "Parse error for build file foo/BUCK:\n"
+            + "Syntax error in bar/BUCK\n"
+            + "Line 42, column 24:\n"
+            + "def some_helper_method(!@87*@!#\n"
+            + "                       ^");
 
     try (ProjectBuildFileParser buildFileParser =
-             buildFileParserFactory.createNoopParserThatAlwaysReturnsErrorWithException(
-                 buckEventBus,
-                 "This is an error",
-                 "parser",
-                 ImmutableMap.<String, Object>builder()
-                     .put("type", "SyntaxError")
-                     .put("value", "You messed up")
-                     .put("filename", "bar/BUCK")
-                     .put("lineno", 42)
-                     .put("offset", 24)
-                     .put("text", "def some_helper_method(!@87*@!#\n")
-                     .put("traceback", ImmutableList.of(
-                          ImmutableMap.of(
-                              "filename", "bar/BUCK",
-                              "line_number", 42,
-                              "function_name", "<module>",
-                              "text", "def some_helper_method(!@87*@!#\n"
-                          ),
-                          ImmutableMap.of(
-                              "filename", "foo/BUCK",
-                              "line_number", 23,
-                              "function_name", "<module>",
-                              "text", "some_helper_method(name=*@!&#(!@&*()\n"
-                          )))
-                     .build())) {
+        buildFileParserFactory.createNoopParserThatAlwaysReturnsErrorWithException(
+            buckEventBus,
+            "This is an error",
+            "parser",
+            ImmutableMap.<String, Object>builder()
+                .put("type", "SyntaxError")
+                .put("value", "You messed up")
+                .put("filename", "bar/BUCK")
+                .put("lineno", 42)
+                .put("offset", 24)
+                .put("text", "def some_helper_method(!@87*@!#\n")
+                .put(
+                    "traceback",
+                    ImmutableList.of(
+                        ImmutableMap.of(
+                            "filename", "bar/BUCK",
+                            "line_number", 42,
+                            "function_name", "<module>",
+                            "text", "def some_helper_method(!@87*@!#\n"),
+                        ImmutableMap.of(
+                            "filename", "foo/BUCK",
+                            "line_number", 23,
+                            "function_name", "<module>",
+                            "text", "some_helper_method(name=*@!&#(!@&*()\n")))
+                .build())) {
       buildFileParser.initIfNeeded();
-      buildFileParser.getAllRulesAndMetaRules(Paths.get("foo/BUCK"));
+      buildFileParser.getAllRulesAndMetaRules(Paths.get("foo/BUCK"), new AtomicLong());
     }
   }
 
@@ -397,44 +396,44 @@ public class ProjectBuildFileParserTest {
 
     thrown.expect(BuildFileParseException.class);
     thrown.expectMessage(
-        "Parse error for build file foo/BUCK:\n" +
-        "ZeroDivisionError: integer division or modulo by zero\n" +
-        "Call stack:\n" +
-        "  File \"bar/BUCK\", line 42, in lets_divide_by_zero\n" +
-        "    foo / bar\n" +
-        "\n" +
-        "  File \"foo/BUCK\", line 23\n" +
-        "    lets_divide_by_zero()\n" +
-        "\n");
+        "Parse error for build file foo/BUCK:\n"
+            + "ZeroDivisionError: integer division or modulo by zero\n"
+            + "Call stack:\n"
+            + "  File \"bar/BUCK\", line 42, in lets_divide_by_zero\n"
+            + "    foo / bar\n"
+            + "\n"
+            + "  File \"foo/BUCK\", line 23\n"
+            + "    lets_divide_by_zero()\n"
+            + "\n");
 
     try (ProjectBuildFileParser buildFileParser =
-             buildFileParserFactory.createNoopParserThatAlwaysReturnsErrorWithException(
-                 BuckEventBusFactory.newInstance(new FakeClock(0)),
-                 "This is an error",
-                 "parser",
-                 ImmutableMap.<String, Object>builder()
-                     .put("type", "ZeroDivisionError")
-                     .put("value", "integer division or modulo by zero")
-                     .put("filename", "bar/BUCK")
-                     .put("lineno", 42)
-                     .put("offset", 24)
-                     .put("text", "foo / bar\n")
-                     .put("traceback", ImmutableList.of(
-                          ImmutableMap.of(
-                              "filename", "bar/BUCK",
-                              "line_number", 42,
-                              "function_name", "lets_divide_by_zero",
-                              "text", "foo / bar\n"
-                          ),
-                          ImmutableMap.of(
-                              "filename", "foo/BUCK",
-                              "line_number", 23,
-                              "function_name", "<module>",
-                              "text", "lets_divide_by_zero()\n"
-                          )))
-                     .build())) {
+        buildFileParserFactory.createNoopParserThatAlwaysReturnsErrorWithException(
+            BuckEventBusFactory.newInstance(new FakeClock(0)),
+            "This is an error",
+            "parser",
+            ImmutableMap.<String, Object>builder()
+                .put("type", "ZeroDivisionError")
+                .put("value", "integer division or modulo by zero")
+                .put("filename", "bar/BUCK")
+                .put("lineno", 42)
+                .put("offset", 24)
+                .put("text", "foo / bar\n")
+                .put(
+                    "traceback",
+                    ImmutableList.of(
+                        ImmutableMap.of(
+                            "filename", "bar/BUCK",
+                            "line_number", 42,
+                            "function_name", "lets_divide_by_zero",
+                            "text", "foo / bar\n"),
+                        ImmutableMap.of(
+                            "filename", "foo/BUCK",
+                            "line_number", 23,
+                            "function_name", "<module>",
+                            "text", "lets_divide_by_zero()\n")))
+                .build())) {
       buildFileParser.initIfNeeded();
-      buildFileParser.getAllRulesAndMetaRules(Paths.get("foo/BUCK"));
+      buildFileParser.getAllRulesAndMetaRules(Paths.get("foo/BUCK"), new AtomicLong());
     }
   }
 
@@ -446,9 +445,7 @@ public class ProjectBuildFileParserTest {
     private final Path projectRoot;
     private final KnownBuildRuleTypes buildRuleTypes;
 
-    public TestProjectBuildFileParserFactory(
-        Path projectRoot,
-        KnownBuildRuleTypes buildRuleTypes) {
+    public TestProjectBuildFileParserFactory(Path projectRoot, KnownBuildRuleTypes buildRuleTypes) {
       this.projectRoot = projectRoot;
       this.buildRuleTypes = buildRuleTypes;
     }
@@ -457,11 +454,9 @@ public class ProjectBuildFileParserTest {
       return new TestProjectBuildFileParser(
           "fake-python",
           new FakeProcessExecutor(
-              params -> fakeProcessWithJsonOutput(
-                  1,
-                  ImmutableList.of(),
-                  Optional.empty(),
-                  Optional.empty()),
+              params ->
+                  fakeProcessWithJsonOutput(
+                      1, ImmutableList.of(), Optional.empty(), Optional.empty()),
               new TestConsole()),
           BuckEventBusFactory.newInstance());
     }
@@ -470,11 +465,9 @@ public class ProjectBuildFileParserTest {
       return new TestProjectBuildFileParser(
           "fake-python",
           new FakeProcessExecutor(
-              params -> fakeProcessWithJsonOutput(
-                  0,
-                  ImmutableList.of(),
-                  Optional.empty(),
-                  Optional.empty()),
+              params ->
+                  fakeProcessWithJsonOutput(
+                      0, ImmutableList.of(), Optional.empty(), Optional.empty()),
               new TestConsole()),
           BuckEventBusFactory.newInstance());
     }
@@ -484,59 +477,45 @@ public class ProjectBuildFileParserTest {
       return new TestProjectBuildFileParser(
           "fake-python",
           new FakeProcessExecutor(
-              params -> fakeProcessWithJsonOutput(
-                  0,
-                  ImmutableList.of(),
-                  Optional.empty(),
-                  Optional.of("Don't Panic!")),
+              params ->
+                  fakeProcessWithJsonOutput(
+                      0, ImmutableList.of(), Optional.empty(), Optional.of("Don't Panic!")),
               new TestConsole()),
           buckEventBus);
     }
 
     public ProjectBuildFileParser createNoopParserThatAlwaysReturnsSuccessWithWarning(
-        BuckEventBus buckEventBus,
-        final String warning,
-        final String source) {
+        BuckEventBus buckEventBus, final String warning, final String source) {
       return new TestProjectBuildFileParser(
           "fake-python",
           new FakeProcessExecutor(
-              params -> fakeProcessWithJsonOutput(
-                  0,
-                  ImmutableList.of(),
-                  Optional.of(
-                      ImmutableList.of(
-                          ImmutableMap.of(
-                              "level",
-                              "warning",
-                              "message",
-                              warning,
-                              "source",
-                              source))),
-                  Optional.empty()),
+              params ->
+                  fakeProcessWithJsonOutput(
+                      0,
+                      ImmutableList.of(),
+                      Optional.of(
+                          ImmutableList.of(
+                              ImmutableMap.of(
+                                  "level", "warning", "message", warning, "source", source))),
+                      Optional.empty()),
               new TestConsole()),
           buckEventBus);
     }
 
     public ProjectBuildFileParser createNoopParserThatAlwaysReturnsSuccessWithError(
-        BuckEventBus buckEventBus,
-        final String error,
-        final String source) {
+        BuckEventBus buckEventBus, final String error, final String source) {
       return new TestProjectBuildFileParser(
           "fake-python",
           new FakeProcessExecutor(
-              params -> fakeProcessWithJsonOutput(
-                  0,
-                  ImmutableList.of(),
-                  Optional.of(
-                      ImmutableList.of(
-                          ImmutableMap.of(
-                              "level",
-                              "error",
-                              "message",
-                              error,
-                              "source",
-                              source))),
-                  Optional.empty()),
+              params ->
+                  fakeProcessWithJsonOutput(
+                      0,
+                      ImmutableList.of(),
+                      Optional.of(
+                          ImmutableList.of(
+                              ImmutableMap.of(
+                                  "level", "error", "message", error, "source", source))),
+                      Optional.empty()),
               new TestConsole()),
           buckEventBus);
     }
@@ -549,31 +528,29 @@ public class ProjectBuildFileParserTest {
       return new TestProjectBuildFileParser(
           "fake-python",
           new FakeProcessExecutor(
-              params -> fakeProcessWithJsonOutput(
-                  1,
-                  ImmutableList.of(),
-                  Optional.of(
-                      ImmutableList.of(
-                          ImmutableMap.of(
-                              "level",
-                              "fatal",
-                              "message",
-                              error,
-                              "source",
-                              source,
-                              "exception",
-                              exception
-                          ))),
-                  Optional.empty()),
+              params ->
+                  fakeProcessWithJsonOutput(
+                      1,
+                      ImmutableList.of(),
+                      Optional.of(
+                          ImmutableList.of(
+                              ImmutableMap.of(
+                                  "level",
+                                  "fatal",
+                                  "message",
+                                  error,
+                                  "source",
+                                  source,
+                                  "exception",
+                                  exception))),
+                      Optional.empty()),
               new TestConsole()),
           buckEventBus);
     }
 
     private class TestProjectBuildFileParser extends ProjectBuildFileParser {
       public TestProjectBuildFileParser(
-          String pythonInterpreter,
-          ProcessExecutor processExecutor,
-          BuckEventBus buckEventBus) {
+          String pythonInterpreter, ProcessExecutor processExecutor, BuckEventBus buckEventBus) {
         super(
             ProjectBuildFileParserOptions.builder()
                 .setProjectRoot(projectRoot)
@@ -588,8 +565,7 @@ public class ProjectBuildFileParserTest {
             new DefaultTypeCoercerFactory(),
             ImmutableMap.of(),
             buckEventBus,
-            processExecutor,
-            /* ignoreBuckAutodepsFiles */ false);
+            processExecutor);
       }
     }
   }

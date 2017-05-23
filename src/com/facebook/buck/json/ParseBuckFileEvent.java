@@ -20,15 +20,12 @@ import com.facebook.buck.event.AbstractBuckEvent;
 import com.facebook.buck.event.EventKey;
 import com.facebook.buck.event.WorkAdvanceEvent;
 import com.google.common.base.Objects;
-
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/**
- * Base class for events about parsing build files..
- */
+/** Base class for events about parsing build files.. */
 public abstract class ParseBuckFileEvent extends AbstractBuckEvent implements WorkAdvanceEvent {
   private final Path buckFilePath;
 
@@ -53,8 +50,9 @@ public abstract class ParseBuckFileEvent extends AbstractBuckEvent implements Wo
   public static Finished finished(
       Started started,
       List<Map<String, Object>> rules,
+      long processedBytes,
       Optional<String> profile) {
-    return new Finished(started, rules, profile);
+    return new Finished(started, rules, processedBytes, profile);
   }
 
   public static class Started extends ParseBuckFileEvent {
@@ -70,11 +68,17 @@ public abstract class ParseBuckFileEvent extends AbstractBuckEvent implements Wo
 
   public static class Finished extends ParseBuckFileEvent {
     private final List<Map<String, Object>> rules;
+    private final long processedBytes;
     private final Optional<String> profile;
 
-    protected Finished(Started started, List<Map<String, Object>> rules, Optional<String> profile) {
+    protected Finished(
+        Started started,
+        List<Map<String, Object>> rules,
+        long processedBytes,
+        Optional<String> profile) {
       super(started.getEventKey(), started.getBuckFilePath());
       this.rules = rules;
+      this.processedBytes = processedBytes;
       this.profile = profile;
     }
 
@@ -89,6 +93,10 @@ public abstract class ParseBuckFileEvent extends AbstractBuckEvent implements Wo
 
     public List<Map<String, Object>> getRules() {
       return rules;
+    }
+
+    public long getProcessedBytes() {
+      return processedBytes;
     }
 
     public Optional<String> getProfile() {

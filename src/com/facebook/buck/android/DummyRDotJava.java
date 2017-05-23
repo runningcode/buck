@@ -17,7 +17,6 @@
 package com.facebook.buck.android;
 
 import com.facebook.buck.io.ProjectFilesystem;
-import com.facebook.buck.jvm.java.CalculateAbiFromClassesStep;
 import com.facebook.buck.jvm.java.CompileToJarStepFactory;
 import com.facebook.buck.jvm.java.HasJavaAbi;
 import com.facebook.buck.jvm.java.JarDirectoryStep;
@@ -27,10 +26,14 @@ import com.facebook.buck.model.BuildTargets;
 import com.facebook.buck.rules.AbstractBuildRule;
 import com.facebook.buck.rules.AddToRuleKey;
 import com.facebook.buck.rules.BuildContext;
+import com.facebook.buck.rules.BuildOutputInitializer;
 import com.facebook.buck.rules.BuildRuleParams;
 import com.facebook.buck.rules.BuildableContext;
 import com.facebook.buck.rules.ExplicitBuildTargetSourcePath;
+import com.facebook.buck.rules.InitializableFromDisk;
+import com.facebook.buck.rules.OnDiskBuildInfo;
 import com.facebook.buck.rules.SourcePath;
+import com.facebook.buck.rules.SourcePathResolver;
 import com.facebook.buck.rules.SourcePathRuleFinder;
 import com.facebook.buck.rules.keys.SupportsInputBasedRuleKey;
 import com.facebook.buck.step.ExecutionContext;
@@ -43,12 +46,10 @@ import com.facebook.buck.util.MoreCollectors;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.FluentIterable;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
-
 import java.io.IOException;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Collections;
 import java.util.Comparator;
@@ -64,21 +65,18 @@ import java.util.zip.ZipFile;
  * since these are later merged together into a single {@code R.java} file by {@link AaptStep}.
  */
 public class DummyRDotJava extends AbstractBuildRule
-    implements SupportsInputBasedRuleKey, HasJavaAbi {
+    implements SupportsInputBasedRuleKey, InitializableFromDisk<Object>, HasJavaAbi {
 
   private final ImmutableList<HasAndroidResourceDeps> androidResourceDeps;
   private final Path outputJar;
+  private final JarContentsSupplier outputJarContentsSupplier;
   private final SourcePathRuleFinder ruleFinder;
-  @AddToRuleKey
-  CompileToJarStepFactory compileStepFactory;
-  @AddToRuleKey
-  private final boolean forceFinalResourceIds;
-  @AddToRuleKey
-  private final Optional<String> unionPackage;
-  @AddToRuleKey
-  private final Optional<String> finalRName;
-  @AddToRuleKey
-  private final boolean useOldStyleableFormat;
+  @AddToRuleKey CompileToJarStepFactory compileStepFactory;
+  @AddToRuleKey private final boolean forceFinalResourceIds;
+  @AddToRuleKey private final Optional<String> unionPackage;
+  @AddToRuleKey private final Optional<String> finalRName;
+  @AddToRuleKey private final boolean useOldStyleableFormat;
+
   @AddToRuleKey
   @SuppressWarnings("PMD.UnusedPrivateField")
   private final ImmutableList<SourcePath> abiInputs;
@@ -115,11 +113,14 @@ public class DummyRDotJava extends AbstractBuildRule
       boolean useOldStyleableFormat,
       ImmutableList<SourcePath> abiInputs) {
     super(params.copyAppendingExtraDeps(() -> ruleFinder.filterBuildRuleInputs(abiInputs)));
+    SourcePathResolver resolver = new SourcePathResolver(ruleFinder);
     this.ruleFinder = ruleFinder;
     // Sort the input so that we get a stable ABI for the same set of resources.
-    this.androidResourceDeps = androidResourceDeps.stream()
-        .sorted(Comparator.comparing(HasAndroidResourceDeps::getBuildTarget))
-        .collect(MoreCollectors.toImmutableList());
+    this.androidResourceDeps =
+        androidResourceDeps
+            .stream()
+            .sorted(Comparator.comparing(HasAndroidResourceDeps::getBuildTarget))
+            .collect(MoreCollectors.toImmutableList());
     this.useOldStyleableFormat = useOldStyleableFormat;
     this.outputJar = getOutputJarPath(getBuildTarget(), getProjectFilesystem());
     this.compileStepFactory = compileStepFactory;
@@ -127,20 +128,19 @@ public class DummyRDotJava extends AbstractBuildRule
     this.unionPackage = unionPackage;
     this.finalRName = finalRName;
     this.abiInputs = abiInputs;
+    this.outputJarContentsSupplier = new JarContentsSupplier(resolver, getSourcePathToOutput());
   }
 
   private static ImmutableList<SourcePath> abiPaths(Iterable<HasAndroidResourceDeps> deps) {
     FluentIterable<HasAndroidResourceDeps> iter = FluentIterable.from(deps);
-    return iter
-        .transform(HasAndroidResourceDeps::getPathToTextSymbolsFile)
+    return iter.transform(HasAndroidResourceDeps::getPathToTextSymbolsFile)
         .append(iter.transform(HasAndroidResourceDeps::getPathToRDotJavaPackageFile))
         .toList();
   }
 
   @Override
   public ImmutableList<Step> getBuildSteps(
-      BuildContext context,
-      final BuildableContext buildableContext) {
+      BuildContext context, final BuildableContext buildableContext) {
     ImmutableList.Builder<Step> steps = ImmutableList.builder();
     final Path rDotJavaSrcFolder = getRDotJavaSrcFolder(getBuildTarget(), getProjectFilesystem());
     steps.addAll(MakeCleanDirectoryStep.of(getProjectFilesystem(), rDotJavaSrcFolder));
@@ -164,15 +164,16 @@ public class DummyRDotJava extends AbstractBuildRule
               /* executable */ false));
       javaSourceFilePaths = ImmutableSortedSet.of(emptyRDotJava);
     } else {
-      MergeAndroidResourcesStep mergeStep = MergeAndroidResourcesStep.createStepForDummyRDotJava(
-          getProjectFilesystem(),
-          context.getSourcePathResolver(),
-          androidResourceDeps,
-          rDotJavaSrcFolder,
-          forceFinalResourceIds,
-          unionPackage,
-          /* rName */ Optional.empty(),
-          useOldStyleableFormat);
+      MergeAndroidResourcesStep mergeStep =
+          MergeAndroidResourcesStep.createStepForDummyRDotJava(
+              getProjectFilesystem(),
+              context.getSourcePathResolver(),
+              androidResourceDeps,
+              rDotJavaSrcFolder,
+              forceFinalResourceIds,
+              unionPackage,
+              /* rName */ Optional.empty(),
+              useOldStyleableFormat);
       steps.add(mergeStep);
 
       if (!finalRName.isPresent()) {
@@ -190,20 +191,17 @@ public class DummyRDotJava extends AbstractBuildRule
                 useOldStyleableFormat);
         steps.add(mergeFinalRStep);
 
-        javaSourceFilePaths = ImmutableSortedSet.<Path>naturalOrder()
-            .addAll(mergeStep.getRDotJavaFiles())
-            .addAll(mergeFinalRStep.getRDotJavaFiles())
-            .build();
+        javaSourceFilePaths =
+            ImmutableSortedSet.<Path>naturalOrder()
+                .addAll(mergeStep.getRDotJavaFiles())
+                .addAll(mergeFinalRStep.getRDotJavaFiles())
+                .build();
       }
     }
 
     // Clear out the directory where the .class files will be generated.
     final Path rDotJavaClassesFolder = getRDotJavaBinFolder();
     steps.addAll(MakeCleanDirectoryStep.of(getProjectFilesystem(), rDotJavaClassesFolder));
-
-    Path pathToAbiOutputDir = getPathToAbiOutputDir(getBuildTarget(), getProjectFilesystem());
-    steps.addAll(MakeCleanDirectoryStep.of(getProjectFilesystem(), pathToAbiOutputDir));
-    Path pathToAbiOutputFile = pathToAbiOutputDir.resolve("abi.jar");
 
     Path pathToJarOutputDir = outputJar.getParent();
     steps.addAll(MakeCleanDirectoryStep.of(getProjectFilesystem(), pathToJarOutputDir));
@@ -235,22 +233,36 @@ public class DummyRDotJava extends AbstractBuildRule
             outputJar,
             ImmutableSortedSet.of(rDotJavaClassesFolder),
             /* mainClass */ null,
-            /* manifestFile */ null));
+            /* manifestFile */ null,
+            /* mergeManifests */ true,
+            /* hashEntries */ true,
+            /* blacklist */ ImmutableSet.of()));
     buildableContext.recordArtifact(outputJar);
 
-    steps.add(new CheckDummyRJarNotEmptyStep());
-
-    steps.add(
-        new CalculateAbiFromClassesStep(
-            buildableContext,
-            getProjectFilesystem(),
-            rDotJavaClassesFolder,
-            pathToAbiOutputFile));
+    steps.add(new CheckDummyRJarNotEmptyStep(javaSourceFilePaths));
 
     return steps.build();
   }
 
+  @Override
+  public Object initializeFromDisk(OnDiskBuildInfo onDiskBuildInfo) throws IOException {
+    // Warm up the jar contents. We just wrote the thing, so it should be in the filesystem cache
+    outputJarContentsSupplier.load();
+    return new Object();
+  }
+
+  @Override
+  public BuildOutputInitializer<Object> getBuildOutputInitializer() {
+    return new BuildOutputInitializer<>(getBuildTarget(), this);
+  }
+
   private class CheckDummyRJarNotEmptyStep implements Step {
+    private final ImmutableSortedSet<Path> javaSourceFilePaths;
+
+    CheckDummyRJarNotEmptyStep(ImmutableSortedSet<Path> javaSourceFilePaths) {
+      this.javaSourceFilePaths = javaSourceFilePaths;
+    }
+
     @Override
     public StepExecutionResult execute(ExecutionContext context)
         throws IOException, InterruptedException {
@@ -263,29 +275,21 @@ public class DummyRDotJava extends AbstractBuildRule
         }
       }
 
-      // Gross copy-paste from above.  Expect this to be deleted shortly
-      // once we start compiling directly from RAM to JAR.
-      Path pathToSrcsList =
-          BuildTargets.getGenPath(getProjectFilesystem(), getBuildTarget(), "__%s__srcs");
-
       StringBuilder sb = new StringBuilder();
-      getProjectFilesystem().walkRelativeFileTree(pathToSrcsList, new SimpleFileVisitor<Path>() {
-        @Override
-        public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-          sb.append(file);
-          sb.append(' ');
-          sb.append(attrs.size());
-          sb.append('\n');
-          return super.visitFile(file, attrs);
-        }
-      });
+      for (Path file : javaSourceFilePaths) {
+        BasicFileAttributes attrs =
+            getProjectFilesystem().readAttributes(file, BasicFileAttributes.class);
+        sb.append(file);
+        sb.append(' ');
+        sb.append(attrs.size());
+        sb.append('\n');
+      }
 
       throw new RuntimeException(
           String.format(
-              "Dummy R.java JAR %s has no classes.  Possible corrupt output.  Is disk full?  " +
-              "Source files:\n%s",
-              outputJar,
-              sb));
+              "Dummy R.java JAR %s has no classes.  Possible corrupt output.  Is disk full?  "
+                  + "Source files:\n%s",
+              outputJar, sb));
     }
 
     @Override
@@ -307,22 +311,28 @@ public class DummyRDotJava extends AbstractBuildRule
     return BuildTargets.getScratchPath(filesystem, buildTarget, "__%s_rdotjava_bin__");
   }
 
-  private static Path getPathToAbiOutputDir(BuildTarget buildTarget, ProjectFilesystem filesystem) {
-    return BuildTargets.getGenPath(filesystem, buildTarget, "__%s_dummyrdotjava_abi__");
-  }
-
   private static Path getPathToOutputDir(BuildTarget buildTarget, ProjectFilesystem filesystem) {
     return BuildTargets.getGenPath(filesystem, buildTarget, "__%s_dummyrdotjava_output__");
   }
 
   private static Path getOutputJarPath(BuildTarget buildTarget, ProjectFilesystem filesystem) {
-    return getPathToOutputDir(buildTarget, filesystem).resolve(
-        String.format("%s.jar", buildTarget.getShortNameAndFlavorPostfix()));
+    return getPathToOutputDir(buildTarget, filesystem)
+        .resolve(String.format("%s.jar", buildTarget.getShortNameAndFlavorPostfix()));
   }
 
   @Override
   public SourcePath getSourcePathToOutput() {
     return new ExplicitBuildTargetSourcePath(getBuildTarget(), outputJar);
+  }
+
+  @Override
+  public ImmutableSortedSet<SourcePath> getJarContents() {
+    return outputJarContentsSupplier.get();
+  }
+
+  @Override
+  public Optional<BuildTarget> getAbiJar() {
+    return Optional.of(getBuildTarget());
   }
 
   public Path getRDotJavaBinFolder() {

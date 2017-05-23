@@ -18,15 +18,15 @@ package com.facebook.buck.rules;
 
 import com.facebook.buck.model.BuildTarget;
 import com.facebook.buck.parser.NoSuchBuildTargetException;
+import com.facebook.buck.util.immutables.BuckStyleImmutable;
+import org.immutables.value.Value;
 
-public class FakeTargetNodeBuilder extends AbstractNodeBuilder<
-    FakeTargetNodeBuilder.Arg,
-    FakeTargetNodeBuilder.FakeDescription,
-    BuildRule> {
+public class FakeTargetNodeBuilder
+    extends AbstractNodeBuilder<
+        FakeTargetNodeArg.Builder, FakeTargetNodeArg, FakeTargetNodeBuilder.FakeDescription,
+        BuildRule> {
 
-  private FakeTargetNodeBuilder(
-      FakeDescription description,
-      BuildTarget target) {
+  private FakeTargetNodeBuilder(FakeDescription description, BuildTarget target) {
     super(description, target);
   }
 
@@ -34,13 +34,15 @@ public class FakeTargetNodeBuilder extends AbstractNodeBuilder<
     return new FakeTargetNodeBuilder(new FakeDescription(rule), rule.getBuildTarget());
   }
 
-  public static TargetNode<Arg, FakeDescription> build(BuildRule rule) {
+  public static TargetNode<FakeTargetNodeArg, FakeDescription> build(BuildRule rule) {
     return newBuilder(rule).build();
   }
 
-  public static class Arg extends AbstractDescriptionArg {}
+  @BuckStyleImmutable
+  @Value.Immutable
+  interface AbstractFakeTargetNodeArg extends CommonDescriptionArg {}
 
-  public static class FakeDescription implements Description<Arg> {
+  public static class FakeDescription implements Description<FakeTargetNodeArg> {
     private final BuildRule rule;
 
     public FakeDescription(BuildRule rule) {
@@ -48,17 +50,18 @@ public class FakeTargetNodeBuilder extends AbstractNodeBuilder<
     }
 
     @Override
-    public Arg createUnpopulatedConstructorArg() {
-      return new Arg();
+    public Class<FakeTargetNodeArg> getConstructorArgType() {
+      return FakeTargetNodeArg.class;
     }
 
     @Override
-    public <A extends Arg> BuildRule createBuildRule(
+    public BuildRule createBuildRule(
         TargetGraph targetGraph,
         BuildRuleParams params,
         BuildRuleResolver resolver,
         CellPathResolver cellRoots,
-        A args) throws NoSuchBuildTargetException {
+        FakeTargetNodeArg args)
+        throws NoSuchBuildTargetException {
       return rule;
     }
   }
