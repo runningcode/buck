@@ -21,13 +21,11 @@ import com.facebook.buck.event.EventKey;
 import com.facebook.buck.event.LeafEvent;
 import com.facebook.buck.event.WorkAdvanceEvent;
 import com.facebook.buck.log.views.JsonViews;
+import com.facebook.buck.util.versioncontrol.SparseSummary;
 import com.fasterxml.jackson.annotation.JsonView;
 
-/**
- * Events posted to mark AutoSparse progress.
- */
-public abstract class AutoSparseStateEvents
-    extends AbstractBuckEvent
+/** Events posted to mark AutoSparse progress. */
+public abstract class AutoSparseStateEvents extends AbstractBuckEvent
     implements LeafEvent, WorkAdvanceEvent {
   // This class does nothing; it exists only to group AbstractBuckEvents.
   private AutoSparseStateEvents(EventKey eventKey) {
@@ -44,9 +42,7 @@ public abstract class AutoSparseStateEvents
     return "";
   }
 
-  /**
-   * Event posted immediately before refreshing the sparse profile
-   */
+  /** Event posted immediately before refreshing the sparse profile */
   public static class SparseRefreshStarted extends AutoSparseStateEvents {
     public SparseRefreshStarted() {
       super(EventKey.unique());
@@ -58,12 +54,15 @@ public abstract class AutoSparseStateEvents
     }
   }
 
-  /**
-   * Event posted immediately after refreshing the sparse profile
-   */
+  /** Event posted immediately after refreshing the sparse profile */
   public static class SparseRefreshFinished extends AutoSparseStateEvents {
-    public SparseRefreshFinished(AutoSparseStateEvents.SparseRefreshStarted started) {
+    @JsonView(JsonViews.MachineReadableLog.class)
+    public final SparseSummary summary;
+
+    public SparseRefreshFinished(
+        AutoSparseStateEvents.SparseRefreshStarted started, SparseSummary summary) {
       super(started.getEventKey());
+      this.summary = summary;
     }
 
     @Override
@@ -72,15 +71,12 @@ public abstract class AutoSparseStateEvents
     }
   }
 
-  /**
-   * Event posted when the sparse profile refresh fails
-   */
+  /** Event posted when the sparse profile refresh fails */
   public static class SparseRefreshFailed extends AutoSparseStateEvents {
     @JsonView(JsonViews.MachineReadableLog.class)
     private String output;
 
-    public SparseRefreshFailed(
-        AutoSparseStateEvents.SparseRefreshStarted started, String output) {
+    public SparseRefreshFailed(AutoSparseStateEvents.SparseRefreshStarted started, String output) {
       super(started.getEventKey());
       this.output = output;
     }

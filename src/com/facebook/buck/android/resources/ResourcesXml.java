@@ -18,63 +18,37 @@ package com.facebook.buck.android.resources;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
-
 import java.io.PrintStream;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import javax.annotation.Nullable;
 
 /**
- * ResourcesXml handles Android's compiled xml format. It consists of:
- *   ResChunk_header
- *     u16 chunk_type
- *     u16 header_size
- *     u32 chunk_size
+ * ResourcesXml handles Android's compiled xml format. It consists of: ResChunk_header u16
+ * chunk_type u16 header_size u32 chunk_size
  *
- * The header is followed by a StringPool containing all the strings used in the xml. This is then
- * followed by an optional RefMap. After the StringPool/RefMap comes a list of xml nodes of the
- * form:
- *   ResChunk_header
- *     u16 chunk_type
- *     u16 header_size
- *     u32 chunk_size
- *   u32       lineNumber
- *   StringRef comment
+ * <p>The header is followed by a StringPool containing all the strings used in the xml. This is
+ * then followed by an optional RefMap. After the StringPool/RefMap comes a list of xml nodes of the
+ * form: ResChunk_header u16 chunk_type u16 header_size u32 chunk_size u32 lineNumber StringRef
+ * comment
  *
- * Each node contains extra information depending on the type:
+ * <p>Each node contains extra information depending on the type:
  *
- * XML_START_NS:
- *   StringRef prefix
- *   StringRef uri
+ * <p>XML_START_NS: StringRef prefix StringRef uri
  *
- * XML_END_NS:
- *   StringRef prefix
- *   StringRef uri
+ * <p>XML_END_NS: StringRef prefix StringRef uri
  *
- * XML_CDATA:
- *   StringRef data
- *   Res_value typedData
+ * <p>XML_CDATA: StringRef data Res_value typedData
  *
- * XML_END_ELEMENT:
- *   StringRef namespace
- *   StringRef name
+ * <p>XML_END_ELEMENT: StringRef namespace StringRef name
  *
- * XML_START_ELEMENT:
- *   StringRef namespace
- *   StringRef name
- *   u16       attrStart
- *   u16       attrSize
- *   u16       attrCount
- *   u16       idIndex
- *   u16       classIndex
- *   u16       styleIndex
+ * <p>XML_START_ELEMENT: StringRef namespace StringRef name u16 attrStart u16 attrSize u16 attrCount
+ * u16 idIndex u16 classIndex u16 styleIndex
  *
- * XML_START_ELEMENT is then followed by attrCount attributes of the form:
- *   StringRef namespace
- *   StringRef name
- *   StringRef rawValue
- *   Res_value typedValue
+ * <p>XML_START_ELEMENT is then followed by attrCount attributes of the form: StringRef namespace
+ * StringRef name StringRef rawValue Res_value typedValue
  */
 public class ResourcesXml extends ResChunk {
   public static final int HEADER_SIZE = 8;
@@ -123,14 +97,52 @@ public class ResourcesXml extends ResChunk {
   }
 
   private ResourcesXml(
-      int chunkSize,
-      StringPool strings,
-      Optional<RefMap> refMap,
-      ByteBuffer nodeBuf) {
+      int chunkSize, StringPool strings, Optional<RefMap> refMap, ByteBuffer nodeBuf) {
     super(CHUNK_XML_TREE, HEADER_SIZE, chunkSize);
     this.strings = strings;
     this.refMap = refMap;
     this.nodeBuf = nodeBuf;
+  }
+
+  public void transformReferences(RefTransformer visitor) {
+    refMap.ifPresent(m -> m.visitReferences(visitor));
+    int offset = 0;
+    while (offset < nodeBuf.limit()) {
+      int type = nodeBuf.getShort(offset);
+      if (type == XML_START_ELEMENT) {
+        int nodeHeaderSize = nodeBuf.getShort(offset + 2);
+
+        int extOffset = offset + nodeHeaderSize;
+        int attrStart = extOffset + nodeBuf.getShort(extOffset + 8);
+        Preconditions.checkState(attrStart == extOffset + 20);
+        int attrCount = nodeBuf.getShort(extOffset + 12);
+        for (int i = 0; i < attrCount; i++) {
+          int attrOffset = attrStart + i * 20;
+          int attrType = nodeBuf.get(attrOffset + 15);
+          switch (attrType) {
+            case RES_REFERENCE:
+            case RES_ATTRIBUTE:
+              transformEntryDataOffset(nodeBuf, attrOffset + 16, visitor);
+              break;
+            case RES_DYNAMIC_ATTRIBUTE:
+            case RES_DYNAMIC_REFERENCE:
+              throw new UnsupportedOperationException();
+            default:
+              break;
+          }
+        }
+      }
+      int chunkSize = nodeBuf.getInt(offset + 4);
+      offset += chunkSize;
+    }
+  }
+
+  public void visitReferences(RefVisitor visitor) {
+    transformReferences(
+        i -> {
+          visitor.visit(i);
+          return i;
+        });
   }
 
   public void dump(PrintStream out) {
@@ -139,13 +151,9 @@ public class ResourcesXml extends ResChunk {
     nodeBuf.position(0);
     while (nodeBuf.position() < nodeBuf.limit()) {
       int nodeSize = nodeBuf.get(nodeBuf.position() + 4);
-      indent = dumpNode(
-          out,
-          strings,
-          refMap,
-          indent,
-          nsMap,
-          slice(nodeBuf, nodeBuf.position(), nodeSize));
+      indent =
+          dumpNode(
+              out, strings, refMap, indent, nsMap, slice(nodeBuf, nodeBuf.position(), nodeSize));
       nodeBuf.position(nodeBuf.position() + nodeSize);
     }
   }
@@ -160,43 +168,37 @@ public class ResourcesXml extends ResChunk {
     int type = buf.getShort(0);
     Preconditions.checkState(type >= XML_FIRST_TYPE && type <= XML_LAST_TYPE);
     switch (type) {
-      case XML_START_NS: {
-        // start namespace
-        int prefixId = buf.getInt(16);
-        String prefix = prefixId == -1 ? "" : strings.getString(prefixId);
-        int uriId = buf.getInt(20);
-        String uri = strings.getString(uriId);
-        out.format(
-            "%sN: %s=%s\n",
-            Strings.padEnd("", indent * 2, ' '),
-            prefix,
-            uri);
-        indent++;
-        nsMap.put(uri, prefix);
-        break;
-      }
+      case XML_START_NS:
+        {
+          // start namespace
+          int prefixId = buf.getInt(16);
+          String prefix = prefixId == -1 ? "" : strings.getString(prefixId);
+          int uriId = buf.getInt(20);
+          String uri = strings.getString(uriId);
+          out.format("%sN: %s=%s\n", Strings.padEnd("", indent * 2, ' '), prefix, uri);
+          indent++;
+          nsMap.put(uri, prefix);
+          break;
+        }
       case XML_END_NS:
         indent--;
         break;
-      case XML_START_ELEMENT: {
-        // start element
-        int lineNumber = buf.getInt(8);
-        int nameId = buf.getInt(20);
-        String name = strings.getString(nameId);
-        int attrCount = buf.getShort(28);
-        ByteBuffer attrExt = slice(buf, 36);
-        out.format(
-            "%sE: %s (line=%d)\n",
-            Strings.padEnd("", indent * 2, ' '),
-            name,
-            lineNumber);
-        indent++;
-        for (int i = 0; i < attrCount; i++) {
-          dumpAttribute(out, strings, refMap, slice(attrExt, attrExt.position()), indent, nsMap);
-          attrExt.position(attrExt.position() + 20);
+      case XML_START_ELEMENT:
+        {
+          // start element
+          int lineNumber = buf.getInt(8);
+          int nameId = buf.getInt(20);
+          String name = strings.getString(nameId);
+          int attrCount = buf.getShort(28);
+          ByteBuffer attrExt = slice(buf, 36);
+          out.format("%sE: %s (line=%d)\n", Strings.padEnd("", indent * 2, ' '), name, lineNumber);
+          indent++;
+          for (int i = 0; i < attrCount; i++) {
+            dumpAttribute(out, strings, refMap, slice(attrExt, attrExt.position()), indent, nsMap);
+            attrExt.position(attrExt.position() + 20);
+          }
+          break;
         }
-        break;
-      }
       case XML_END_ELEMENT:
         indent--;
         break;
@@ -215,7 +217,8 @@ public class ResourcesXml extends ResChunk {
       StringPool strings,
       Optional<RefMap> refMap,
       ByteBuffer buf,
-      int indent, Map<String, String> nsMap) {
+      int indent,
+      Map<String, String> nsMap) {
     int nsId = buf.getInt(0);
     String namespace = nsId == -1 ? "" : strings.getString(nsId);
     String shortNs = nsMap.get(namespace);
@@ -223,8 +226,7 @@ public class ResourcesXml extends ResChunk {
     String name = strings.getString(nameIndex);
     int resValue = refMap.isPresent() ? refMap.get().getRef(nameIndex) : -1;
     int rawValueIndex = buf.getInt(8);
-    String rawValue =
-        rawValueIndex < 0 ? null : strings.getOutputNormalizedString(rawValueIndex);
+    String rawValue = rawValueIndex < 0 ? null : strings.getOutputNormalizedString(rawValueIndex);
     int attrType = buf.get(15);
     int data = buf.getInt(16);
     String dumpValue = getValueForDump(strings, rawValue, attrType, data);
@@ -238,11 +240,9 @@ public class ResourcesXml extends ResChunk {
         rawValue == null ? "" : String.format(" (Raw: \"%s\")", rawValue));
   }
 
+  @Nullable
   private static String getValueForDump(
-      StringPool strings,
-      String rawValue,
-      int attrType,
-      int data) {
+      StringPool strings, @Nullable String rawValue, int attrType, int data) {
     switch (attrType) {
       case RES_REFERENCE:
         return String.format("@0x%x", data);
@@ -263,13 +263,10 @@ public class ResourcesXml extends ResChunk {
 
   /**
    * A RefMap is an optional entry in a compiled xml that provides the reference ids for some of the
-   * strings in the stringpool. It consists of
-   *   ResTable_header
-   *       u32 chunk_type
-   *       u32 header_size
-   *       u32 chunk_size
+   * strings in the stringpool. It consists of ResTable_header u32 chunk_type u32 header_size u32
+   * chunk_size
    *
-   * The header is followed by an array of u32 ids of size (chunk_size - header_size) / 4. Each
+   * <p>The header is followed by an array of u32 ids of size (chunk_size - header_size) / 4. Each
    * entry is the reference id for the string with the same position in the string pool.
    */
   private static class RefMap extends ResChunk {
@@ -293,6 +290,12 @@ public class ResourcesXml extends ResChunk {
         return buf.getInt(getHeaderSize() + index * 4);
       }
       return -1;
+    }
+
+    public void visitReferences(RefTransformer visitor) {
+      for (int i = 0; i < refCount; i++) {
+        transformEntryDataOffset(buf, getHeaderSize() + i * 4, visitor);
+      }
     }
   }
 }

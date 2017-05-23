@@ -55,33 +55,32 @@ import com.facebook.buck.rules.TargetGraph;
 import com.facebook.buck.rules.args.SourcePathArg;
 import com.facebook.buck.util.OptionalCompat;
 import com.facebook.buck.util.RichStream;
+import com.facebook.buck.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.versions.VersionPropagator;
-import com.facebook.infer.annotation.SuppressFieldNotInitialized;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-
 import java.io.File;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
+import org.immutables.value.Value;
 
-public class CxxLuaExtensionDescription implements
-    Description<CxxLuaExtensionDescription.Arg>,
-    ImplicitDepsInferringDescription<CxxLuaExtensionDescription.Arg>,
-    VersionPropagator<CxxLuaExtensionDescription.Arg> {
+public class CxxLuaExtensionDescription
+    implements Description<CxxLuaExtensionDescriptionArg>,
+        ImplicitDepsInferringDescription<
+            CxxLuaExtensionDescription.AbstractCxxLuaExtensionDescriptionArg>,
+        VersionPropagator<CxxLuaExtensionDescriptionArg> {
 
   private final LuaConfig luaConfig;
   private final CxxBuckConfig cxxBuckConfig;
   private final FlavorDomain<CxxPlatform> cxxPlatforms;
 
   public CxxLuaExtensionDescription(
-      LuaConfig luaConfig,
-      CxxBuckConfig cxxBuckConfig,
-      FlavorDomain<CxxPlatform> cxxPlatforms) {
+      LuaConfig luaConfig, CxxBuckConfig cxxBuckConfig, FlavorDomain<CxxPlatform> cxxPlatforms) {
     this.luaConfig = luaConfig;
     this.cxxBuckConfig = cxxBuckConfig;
     this.cxxPlatforms = cxxPlatforms;
@@ -91,20 +90,14 @@ public class CxxLuaExtensionDescription implements
     return String.format("%s.%s", target.getShortName(), cxxPlatform.getSharedLibraryExtension());
   }
 
-  private BuildTarget getExtensionTarget(
-      BuildTarget target,
-      Flavor platform) {
-    return BuildTarget.builder(target)
-        .addFlavors(platform)
-        .build();
+  private BuildTarget getExtensionTarget(BuildTarget target, Flavor platform) {
+    return BuildTarget.builder(target).addFlavors(platform).build();
   }
 
   private Path getExtensionPath(
-      ProjectFilesystem filesystem,
-      BuildTarget target,
-      CxxPlatform cxxPlatform) {
-    return BuildTargets
-        .getGenPath(filesystem, getExtensionTarget(target, cxxPlatform.getFlavor()), "%s")
+      ProjectFilesystem filesystem, BuildTarget target, CxxPlatform cxxPlatform) {
+    return BuildTargets.getGenPath(
+            filesystem, getExtensionTarget(target, cxxPlatform.getFlavor()), "%s")
         .resolve(getExtensionName(target, cxxPlatform));
   }
 
@@ -115,18 +108,13 @@ public class CxxLuaExtensionDescription implements
       SourcePathRuleFinder ruleFinder,
       CellPathResolver cellRoots,
       CxxPlatform cxxPlatform,
-      Arg args)
+      CxxLuaExtensionDescriptionArg args)
       throws NoSuchBuildTargetException {
 
     // Extract all C/C++ sources from the constructor arg.
     ImmutableMap<String, CxxSource> srcs =
         CxxDescriptionEnhancer.parseCxxSources(
-            params.getBuildTarget(),
-            ruleResolver,
-            ruleFinder,
-            pathResolver,
-            cxxPlatform,
-            args);
+            params.getBuildTarget(), ruleResolver, ruleFinder, pathResolver, cxxPlatform, args);
     ImmutableMap<Path, SourcePath> headers =
         CxxDescriptionEnhancer.parseHeaders(
             params.getBuildTarget(),
@@ -140,25 +128,17 @@ public class CxxLuaExtensionDescription implements
     // and all dependencies.
     HeaderSymlinkTree headerSymlinkTree =
         CxxDescriptionEnhancer.requireHeaderSymlinkTree(
-            params,
-            ruleResolver,
-            cxxPlatform,
-            headers,
-            HeaderVisibility.PRIVATE,
-            true);
+            params, ruleResolver, cxxPlatform, headers, HeaderVisibility.PRIVATE, true);
     Optional<SymlinkTree> sandboxTree = Optional.empty();
     if (cxxBuckConfig.sandboxSources()) {
-      sandboxTree =
-          CxxDescriptionEnhancer.createSandboxTree(
-              params,
-              ruleResolver,
-              cxxPlatform);
+      sandboxTree = CxxDescriptionEnhancer.createSandboxTree(params, ruleResolver, cxxPlatform);
     }
     ImmutableSet<BuildRule> deps = args.getCxxDeps().get(ruleResolver, cxxPlatform);
     ImmutableList<CxxPreprocessorInput> cxxPreprocessorInput =
         ImmutableList.<CxxPreprocessorInput>builder()
             .add(
-                luaConfig.getLuaCxxLibrary(ruleResolver)
+                luaConfig
+                    .getLuaCxxLibrary(ruleResolver)
                     .getCxxPreprocessorInput(cxxPlatform, HeaderVisibility.PUBLIC))
             .addAll(
                 CxxDescriptionEnhancer.collectCxxPreprocessorInput(
@@ -166,16 +146,14 @@ public class CxxLuaExtensionDescription implements
                     cxxPlatform,
                     deps,
                     CxxFlags.getLanguageFlags(
-                        args.preprocessorFlags,
-                        args.platformPreprocessorFlags,
-                        args.langPreprocessorFlags,
+                        args.getPreprocessorFlags(),
+                        args.getPlatformPreprocessorFlags(),
+                        args.getLangPreprocessorFlags(),
                         cxxPlatform),
                     ImmutableList.of(headerSymlinkTree),
                     ImmutableSet.of(),
-                    CxxPreprocessables.getTransitiveCxxPreprocessorInput(
-                        cxxPlatform,
-                        deps),
-                    args.includeDirs,
+                    CxxPreprocessables.getTransitiveCxxPreprocessorInput(cxxPlatform, deps),
+                    args.getIncludeDirs(),
                     sandboxTree))
             .build();
 
@@ -190,12 +168,12 @@ public class CxxLuaExtensionDescription implements
             cxxPlatform,
             cxxPreprocessorInput,
             CxxFlags.getLanguageFlags(
-                args.compilerFlags,
-                args.platformCompilerFlags,
-                args.langCompilerFlags,
+                args.getCompilerFlags(),
+                args.getPlatformCompilerFlags(),
+                args.getLangCompilerFlags(),
                 cxxPlatform),
-            args.prefixHeader,
-            args.precompiledHeader,
+            args.getPrefixHeader(),
+            args.getPrecompiledHeader(),
             srcs,
             CxxSourceRuleFactory.PicType.PIC,
             sandboxTree);
@@ -208,9 +186,7 @@ public class CxxLuaExtensionDescription implements
             ruleResolver,
             cxxPlatform,
             CxxFlags.getFlagsWithMacrosWithPlatformMacroExpansion(
-                args.linkerFlags,
-                args.platformLinkerFlags,
-                cxxPlatform)));
+                args.getLinkerFlags(), args.getPlatformLinkerFlags(), cxxPlatform)));
 
     // Add object files into the args.
     argsBuilder.addAll(SourcePathArg.from(picObjects.values()));
@@ -218,27 +194,22 @@ public class CxxLuaExtensionDescription implements
     return argsBuilder.build();
   }
 
-  private <A extends Arg> BuildRule createExtensionBuildRule(
+  private BuildRule createExtensionBuildRule(
       BuildRuleParams params,
       BuildRuleResolver ruleResolver,
       CellPathResolver cellRoots,
       CxxPlatform cxxPlatform,
-      A args) throws NoSuchBuildTargetException {
+      CxxLuaExtensionDescriptionArg args)
+      throws NoSuchBuildTargetException {
     if (params.getBuildTarget().getFlavors().contains(CxxDescriptionEnhancer.SANDBOX_TREE_FLAVOR)) {
       return CxxDescriptionEnhancer.createSandboxTreeBuildRule(
-          ruleResolver,
-          args,
-          cxxPlatform,
-          params);
+          ruleResolver, args, cxxPlatform, params);
     }
     SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(ruleResolver);
     SourcePathResolver pathResolver = new SourcePathResolver(ruleFinder);
     String extensionName = getExtensionName(params.getBuildTarget(), cxxPlatform);
     Path extensionPath =
-        getExtensionPath(
-            params.getProjectFilesystem(),
-            params.getBuildTarget(),
-            cxxPlatform);
+        getExtensionPath(params.getProjectFilesystem(), params.getBuildTarget(), cxxPlatform);
     return CxxLinkableEnhancer.createCxxLinkableBuildRule(
         cxxBuckConfig,
         cxxPlatform,
@@ -246,9 +217,7 @@ public class CxxLuaExtensionDescription implements
         ruleResolver,
         pathResolver,
         ruleFinder,
-        getExtensionTarget(
-            params.getBuildTarget(),
-            cxxPlatform.getFlavor()),
+        getExtensionTarget(params.getBuildTarget(), cxxPlatform.getFlavor()),
         Linker.LinkType.SHARED,
         Optional.of(extensionName),
         extensionPath,
@@ -258,7 +227,7 @@ public class CxxLuaExtensionDescription implements
             .filter(NativeLinkable.class)
             .concat(Stream.of(luaConfig.getLuaCxxLibrary(ruleResolver)))
             .toImmutableList(),
-        args.cxxRuntimeType,
+        args.getCxxRuntimeType(),
         Optional.empty(),
         ImmutableSet.of(),
         NativeLinkableInput.builder()
@@ -271,21 +240,22 @@ public class CxxLuaExtensionDescription implements
                     cellRoots,
                     cxxPlatform,
                     args))
-            .build());
+            .build(),
+        Optional.empty());
   }
 
   @Override
-  public Arg createUnpopulatedConstructorArg() {
-    return new Arg();
+  public Class<CxxLuaExtensionDescriptionArg> getConstructorArgType() {
+    return CxxLuaExtensionDescriptionArg.class;
   }
 
   @Override
-  public <A extends Arg> BuildRule createBuildRule(
+  public BuildRule createBuildRule(
       TargetGraph targetGraph,
       final BuildRuleParams params,
       final BuildRuleResolver resolver,
       CellPathResolver cellRoots,
-      final A args)
+      final CxxLuaExtensionDescriptionArg args)
       throws NoSuchBuildTargetException {
 
     // See if we're building a particular "type" of this library, and if so, extract
@@ -306,20 +276,16 @@ public class CxxLuaExtensionDescription implements
 
       @Override
       public String getModule(CxxPlatform cxxPlatform) {
-        String baseModule = LuaUtil.getBaseModule(params.getBuildTarget(), args.baseModule);
+        String baseModule = LuaUtil.getBaseModule(params.getBuildTarget(), args.getBaseModule());
         String name = getExtensionName(params.getBuildTarget(), cxxPlatform);
         return baseModule.isEmpty() ? name : baseModule + File.separator + name;
       }
 
       @Override
-      public SourcePath getExtension(
-          CxxPlatform cxxPlatform)
-          throws NoSuchBuildTargetException {
+      public SourcePath getExtension(CxxPlatform cxxPlatform) throws NoSuchBuildTargetException {
         BuildRule rule =
             resolver.requireRule(
-                BuildTarget.builder(getBuildTarget())
-                    .addFlavors(cxxPlatform.getFlavor())
-                    .build());
+                BuildTarget.builder(getBuildTarget()).addFlavors(cxxPlatform.getFlavor()).build());
         return Preconditions.checkNotNull(rule.getSourcePathToOutput());
       }
 
@@ -329,8 +295,7 @@ public class CxxLuaExtensionDescription implements
       }
 
       @Override
-      public Iterable<? extends NativeLinkable> getNativeLinkTargetDeps(
-          CxxPlatform cxxPlatform) {
+      public Iterable<? extends NativeLinkable> getNativeLinkTargetDeps(CxxPlatform cxxPlatform) {
         return RichStream.from(args.getCxxDeps().get(resolver, cxxPlatform))
             .filter(NativeLinkable.class)
             .toImmutableList();
@@ -342,14 +307,8 @@ public class CxxLuaExtensionDescription implements
         return NativeLinkableInput.builder()
             .addAllArgs(
                 getExtensionArgs(
-                    params,
-                    resolver,
-                    pathResolver,
-                    ruleFinder,
-                    cellRoots,
-                    cxxPlatform,
-                    args))
-            .addAllFrameworks(args.frameworks)
+                    params, resolver, pathResolver, ruleFinder, cellRoots, cxxPlatform, args))
+            .addAllFrameworks(args.getFrameworks())
             .build();
       }
 
@@ -357,7 +316,6 @@ public class CxxLuaExtensionDescription implements
       public Optional<Path> getNativeLinkTargetOutputPath(CxxPlatform cxxPlatform) {
         return Optional.empty();
       }
-
     };
   }
 
@@ -365,7 +323,7 @@ public class CxxLuaExtensionDescription implements
   public void findDepsForTargetFromConstructorArgs(
       BuildTarget buildTarget,
       CellPathResolver cellRoots,
-      Arg constructorArg,
+      AbstractCxxLuaExtensionDescriptionArg constructorArg,
       ImmutableCollection.Builder<BuildTarget> extraDepsBuilder,
       ImmutableCollection.Builder<BuildTarget> targetGraphOnlyDepsBuilder) {
     // Add deps from lua C/C++ library.
@@ -375,9 +333,9 @@ public class CxxLuaExtensionDescription implements
     extraDepsBuilder.addAll(CxxPlatforms.getParseTimeDeps(cxxPlatforms.getValues()));
   }
 
-  @SuppressFieldNotInitialized
-  public static class Arg extends CxxConstructorArg {
-    public Optional<String> baseModule;
+  @BuckStyleImmutable
+  @Value.Immutable
+  interface AbstractCxxLuaExtensionDescriptionArg extends CxxConstructorArg {
+    Optional<String> getBaseModule();
   }
-
 }

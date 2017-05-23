@@ -28,16 +28,17 @@ import com.facebook.buck.model.BuildTarget;
 import com.facebook.buck.model.Flavor;
 import com.facebook.buck.model.FlavorDomain;
 import com.facebook.buck.model.Flavored;
-import com.facebook.buck.model.HasTests;
 import com.facebook.buck.model.Pair;
 import com.facebook.buck.parser.NoSuchBuildTargetException;
-import com.facebook.buck.rules.AbstractDescriptionArg;
 import com.facebook.buck.rules.BuildRule;
 import com.facebook.buck.rules.BuildRuleParams;
 import com.facebook.buck.rules.BuildRuleResolver;
 import com.facebook.buck.rules.CellPathResolver;
+import com.facebook.buck.rules.CommonDescriptionArg;
 import com.facebook.buck.rules.Description;
-import com.facebook.buck.rules.coercer.Hint;
+import com.facebook.buck.rules.HasDeclaredDeps;
+import com.facebook.buck.rules.HasSrcs;
+import com.facebook.buck.rules.HasTests;
 import com.facebook.buck.rules.ImplicitDepsInferringDescription;
 import com.facebook.buck.rules.SourcePath;
 import com.facebook.buck.rules.SourcePathResolver;
@@ -45,25 +46,24 @@ import com.facebook.buck.rules.SourcePathRuleFinder;
 import com.facebook.buck.rules.TargetGraph;
 import com.facebook.buck.rules.ToolProvider;
 import com.facebook.buck.rules.args.SourcePathArg;
+import com.facebook.buck.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.versions.VersionPropagator;
-import com.facebook.infer.annotation.SuppressFieldNotInitialized;
 import com.google.common.collect.FluentIterable;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.immutables.value.Value;
 
-
-public class RustLibraryDescription implements
-    Description<RustLibraryDescription.Arg>,
-    ImplicitDepsInferringDescription<RustLibraryDescription.Arg>,
-    Flavored,
-    VersionPropagator<RustLibraryDescription.Arg> {
+public class RustLibraryDescription
+    implements Description<RustLibraryDescriptionArg>,
+        ImplicitDepsInferringDescription<RustLibraryDescription.AbstractRustLibraryDescriptionArg>,
+        Flavored,
+        VersionPropagator<RustLibraryDescriptionArg> {
 
   private static final FlavorDomain<RustDescriptionEnhancer.Type> LIBRARY_TYPE =
       FlavorDomain.from("Rust Library Type", RustDescriptionEnhancer.Type.class);
@@ -82,8 +82,8 @@ public class RustLibraryDescription implements
   }
 
   @Override
-  public Arg createUnpopulatedConstructorArg() {
-    return new Arg();
+  public Class<RustLibraryDescriptionArg> getConstructorArgType() {
+    return RustLibraryDescriptionArg.class;
   }
 
   private RustCompileRule requireBuild(
@@ -99,7 +99,7 @@ public class RustLibraryDescription implements
       String crate,
       CrateType crateType,
       Linker.LinkableDepType depType,
-      Arg args)
+      RustLibraryDescriptionArg args)
       throws NoSuchBuildTargetException {
     Pair<SourcePath, ImmutableSortedSet<SourcePath>> rootModuleAndSources =
         RustCompileUtils.getRootModuleAndSources(
@@ -109,9 +109,9 @@ public class RustLibraryDescription implements
             ruleFinder,
             cxxPlatform,
             crate,
-            args.crateRoot,
+            args.getCrateRoot(),
             ImmutableSet.of("lib.rs"),
-            args.srcs);
+            args.getSrcs());
     return RustCompileUtils.requireBuild(
         params,
         resolver,
@@ -129,24 +129,25 @@ public class RustLibraryDescription implements
   }
 
   @Override
-  public <A extends Arg> BuildRule createBuildRule(
+  public BuildRule createBuildRule(
       TargetGraph targetGraph,
       BuildRuleParams params,
       BuildRuleResolver resolver,
       CellPathResolver cellRoots,
-      A args) throws NoSuchBuildTargetException {
+      RustLibraryDescriptionArg args)
+      throws NoSuchBuildTargetException {
     final BuildTarget buildTarget = params.getBuildTarget();
     SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
     SourcePathResolver pathResolver = new SourcePathResolver(ruleFinder);
 
     ImmutableList.Builder<String> rustcArgs = ImmutableList.builder();
 
-    RustCompileUtils.addFeatures(buildTarget, args.features, rustcArgs);
+    RustCompileUtils.addFeatures(buildTarget, args.getFeatures(), rustcArgs);
 
-    rustcArgs.addAll(args.rustcFlags);
+    rustcArgs.addAll(args.getRustcFlags());
     rustcArgs.addAll(rustBuckConfig.getRustLibraryFlags());
 
-    String crate = args.crate.orElse(ruleToCrateName(params.getBuildTarget().getShortName()));
+    String crate = args.getCrate().orElse(ruleToCrateName(params.getBuildTarget().getShortName()));
 
     // See if we're building a particular "type" and "platform" of this library, and if so, extract
     // them from the flavors attached to the build target.
@@ -204,7 +205,7 @@ public class RustLibraryDescription implements
         if (isCheck) {
           crateType = CrateType.CHECK;
         } else {
-          switch (args.preferredLinkage) {
+          switch (args.getPreferredLinkage()) {
             case ANY:
             default:
               switch (depType) {
@@ -236,20 +237,21 @@ public class RustLibraryDescription implements
         }
 
         try {
-          rule = requireBuild(
-              params,
-              resolver,
-              pathResolver,
-              ruleFinder,
-              cxxPlatform,
-              rustBuckConfig,
-              rustcArgs.build(),
-              /* linkerArgs */ ImmutableList.of(),
-              /* linkerInputs */ ImmutableList.of(),
-              crate,
-              crateType,
-              depType,
-              args);
+          rule =
+              requireBuild(
+                  params,
+                  resolver,
+                  pathResolver,
+                  ruleFinder,
+                  cxxPlatform,
+                  rustBuckConfig,
+                  rustcArgs.build(),
+                  /* linkerArgs */ ImmutableList.of(),
+                  /* linkerInputs */ ImmutableList.of(),
+                  crate,
+                  crateType,
+                  depType,
+                  args);
         } catch (NoSuchBuildTargetException e) {
           throw new RuntimeException(e);
         }
@@ -259,7 +261,7 @@ public class RustLibraryDescription implements
 
       @Override
       public Linkage getPreferredLinkage() {
-        return args.preferredLinkage;
+        return args.getPreferredLinkage();
       }
 
       @Override
@@ -282,9 +284,7 @@ public class RustLibraryDescription implements
                 CrateType.DYLIB,
                 Linker.LinkableDepType.SHARED,
                 args);
-        libs.put(
-            sharedLibrarySoname,
-            sharedLibraryBuildRule.getSourcePathToOutput());
+        libs.put(sharedLibrarySoname, sharedLibraryBuildRule.getSourcePathToOutput());
         return libs.build();
       }
 
@@ -296,14 +296,12 @@ public class RustLibraryDescription implements
 
       @Override
       public Iterable<? extends NativeLinkable> getNativeLinkableExportedDeps() {
-        return FluentIterable.from(getBuildDeps())
-            .filter(NativeLinkable.class);
+        return FluentIterable.from(getBuildDeps()).filter(NativeLinkable.class);
       }
 
       @Override
       public NativeLinkableInput getNativeLinkableInput(
-          CxxPlatform cxxPlatform,
-          Linker.LinkableDepType depType)
+          CxxPlatform cxxPlatform, Linker.LinkableDepType depType)
           throws NoSuchBuildTargetException {
         CrateType crateType;
 
@@ -322,20 +320,21 @@ public class RustLibraryDescription implements
             break;
         }
 
-        BuildRule rule = requireBuild(
-            params,
-            resolver,
-            pathResolver,
-            ruleFinder,
-            cxxPlatform,
-            rustBuckConfig,
-            rustcArgs.build(),
-            /* linkerArgs */ ImmutableList.of(),
-            /* linkerInputs */ ImmutableList.of(),
-            crate,
-            crateType,
-            depType,
-            args);
+        BuildRule rule =
+            requireBuild(
+                params,
+                resolver,
+                pathResolver,
+                ruleFinder,
+                cxxPlatform,
+                rustBuckConfig,
+                rustcArgs.build(),
+                /* linkerArgs */ ImmutableList.of(),
+                /* linkerInputs */ ImmutableList.of(),
+                crate,
+                crateType,
+                depType,
+                args);
 
         SourcePath lib = rule.getSourcePathToOutput();
         SourcePathArg arg = SourcePathArg.of(lib);
@@ -345,7 +344,7 @@ public class RustLibraryDescription implements
 
       @Override
       public Linkage getPreferredLinkage(CxxPlatform cxxPlatform) {
-        return args.preferredLinkage;
+        return args.getPreferredLinkage();
       }
 
       @Override
@@ -354,9 +353,7 @@ public class RustLibraryDescription implements
         ImmutableMap.Builder<String, SourcePath> libs = ImmutableMap.builder();
         String sharedLibrarySoname =
             CxxDescriptionEnhancer.getSharedLibrarySoname(
-                Optional.empty(),
-                getBuildTarget(),
-                cxxPlatform);
+                Optional.empty(), getBuildTarget(), cxxPlatform);
         BuildRule sharedLibraryBuildRule =
             requireBuild(
                 params,
@@ -372,9 +369,7 @@ public class RustLibraryDescription implements
                 CrateType.CDYLIB,
                 Linker.LinkableDepType.SHARED,
                 args);
-        libs.put(
-            sharedLibrarySoname,
-            sharedLibraryBuildRule.getSourcePathToOutput());
+        libs.put(sharedLibrarySoname, sharedLibraryBuildRule.getSourcePathToOutput());
         return libs.build();
       }
     };
@@ -384,14 +379,12 @@ public class RustLibraryDescription implements
   public void findDepsForTargetFromConstructorArgs(
       BuildTarget buildTarget,
       CellPathResolver cellRoots,
-      Arg constructorArg,
+      AbstractRustLibraryDescriptionArg constructorArg,
       ImmutableCollection.Builder<BuildTarget> extraDepsBuilder,
       ImmutableCollection.Builder<BuildTarget> targetGraphOnlyDepsBuilder) {
     extraDepsBuilder.addAll(rustBuckConfig.getRustCompiler().getParseTimeDeps());
     extraDepsBuilder.addAll(
-        rustBuckConfig.getLinker()
-            .map(ToolProvider::getParseTimeDeps)
-            .orElse(ImmutableList.of()));
+        rustBuckConfig.getLinker().map(ToolProvider::getParseTimeDeps).orElse(ImmutableList.of()));
 
     extraDepsBuilder.addAll(CxxPlatforms.getParseTimeDeps(cxxPlatforms.getValues()));
   }
@@ -416,21 +409,22 @@ public class RustLibraryDescription implements
     return Optional.of(ImmutableSet.of(cxxPlatforms, LIBRARY_TYPE));
   }
 
-  @SuppressFieldNotInitialized
-  public static class Arg extends AbstractDescriptionArg implements HasTests {
-    public ImmutableSortedSet<SourcePath> srcs = ImmutableSortedSet.of();
-    public ImmutableSortedSet<String> features = ImmutableSortedSet.of();
-    public List<String> rustcFlags = ImmutableList.of();
-    public ImmutableSortedSet<BuildTarget> deps = ImmutableSortedSet.of();
-    public NativeLinkable.Linkage preferredLinkage = NativeLinkable.Linkage.ANY;
-    public Optional<String> crate;
-    public Optional<SourcePath> crateRoot;
-    @Hint(isDep = false)
-    public ImmutableSortedSet<BuildTarget> tests = ImmutableSortedSet.of();
+  @BuckStyleImmutable
+  @Value.Immutable
+  interface AbstractRustLibraryDescriptionArg
+      extends CommonDescriptionArg, HasDeclaredDeps, HasSrcs, HasTests {
+    @Value.NaturalOrder
+    ImmutableSortedSet<String> getFeatures();
 
-    @Override
-    public ImmutableSortedSet<BuildTarget> getTests() {
-      return tests;
+    List<String> getRustcFlags();
+
+    @Value.Default
+    default NativeLinkable.Linkage getPreferredLinkage() {
+      return NativeLinkable.Linkage.ANY;
     }
+
+    Optional<String> getCrate();
+
+    Optional<SourcePath> getCrateRoot();
   }
 }

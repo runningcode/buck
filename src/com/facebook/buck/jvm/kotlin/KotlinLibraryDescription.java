@@ -33,21 +33,21 @@ import com.facebook.buck.rules.BuildRuleResolver;
 import com.facebook.buck.rules.CellPathResolver;
 import com.facebook.buck.rules.Description;
 import com.facebook.buck.rules.TargetGraph;
-import com.facebook.infer.annotation.SuppressFieldNotInitialized;
+import com.facebook.buck.util.immutables.BuckStyleImmutable;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
+import java.util.Optional;
+import org.immutables.value.Value;
 
-
-public class KotlinLibraryDescription implements
-    Description<KotlinLibraryDescription.Arg>, Flavored {
+public class KotlinLibraryDescription
+    implements Description<KotlinLibraryDescriptionArg>, Flavored {
 
   private final KotlinBuckConfig kotlinBuckConfig;
 
-  public static final ImmutableSet<Flavor> SUPPORTED_FLAVORS = ImmutableSet.of(
-      JavaLibrary.SRC_JAR,
-      JavaLibrary.MAVEN_JAR);
+  public static final ImmutableSet<Flavor> SUPPORTED_FLAVORS =
+      ImmutableSet.of(JavaLibrary.SRC_JAR, JavaLibrary.MAVEN_JAR);
 
   public KotlinLibraryDescription(KotlinBuckConfig kotlinBuckConfig) {
     this.kotlinBuckConfig = kotlinBuckConfig;
@@ -59,17 +59,18 @@ public class KotlinLibraryDescription implements
   }
 
   @Override
-  public Arg createUnpopulatedConstructorArg() {
-    return new Arg();
+  public Class<KotlinLibraryDescriptionArg> getConstructorArgType() {
+    return KotlinLibraryDescriptionArg.class;
   }
 
   @Override
-  public <A extends Arg> BuildRule createBuildRule(
+  public BuildRule createBuildRule(
       TargetGraph targetGraph,
       BuildRuleParams params,
       BuildRuleResolver resolver,
       CellPathResolver cellRoots,
-      A args) throws NoSuchBuildTargetException {
+      KotlinLibraryDescriptionArg args)
+      throws NoSuchBuildTargetException {
 
     BuildTarget target = params.getBuildTarget();
 
@@ -85,30 +86,24 @@ public class KotlinLibraryDescription implements
     }
 
     if (flavors.contains(JavaLibrary.SRC_JAR)) {
-      args.mavenCoords = args.mavenCoords.map(input -> AetherUtil.addClassifier(
-          input,
-          AetherUtil.CLASSIFIER_SOURCES));
+      Optional<String> mavenCoords =
+          args.getMavenCoords()
+              .map(input -> AetherUtil.addClassifier(input, AetherUtil.CLASSIFIER_SOURCES));
 
       if (!flavors.contains(JavaLibrary.MAVEN_JAR)) {
-        return new JavaSourceJar(
-            params,
-            args.srcs,
-            args.mavenCoords);
+        return new JavaSourceJar(params, args.getSrcs(), mavenCoords);
       } else {
         return MavenUberJar.SourceJar.create(
             Preconditions.checkNotNull(paramsWithMavenFlavor),
-            args.srcs,
-            args.mavenCoords,
-            args.mavenPomTemplate);
+            args.getSrcs(),
+            mavenCoords,
+            args.getMavenPomTemplate());
       }
     }
 
-
-    DefaultKotlinLibraryBuilder defaultKotlinLibraryBuilder = new DefaultKotlinLibraryBuilder(
-        params,
-        resolver,
-        kotlinBuckConfig)
-        .setArgs(args);
+    DefaultKotlinLibraryBuilder defaultKotlinLibraryBuilder =
+        new DefaultKotlinLibraryBuilder(targetGraph, params, resolver, cellRoots, kotlinBuckConfig)
+            .setArgs(args);
 
     // We know that the flavour we're being asked to create is valid, since the check is done when
     // creating the action graph from the target graph.
@@ -124,14 +119,16 @@ public class KotlinLibraryDescription implements
       return MavenUberJar.create(
           defaultKotlinLibrary,
           Preconditions.checkNotNull(paramsWithMavenFlavor),
-          args.mavenCoords,
-          args.mavenPomTemplate);
+          args.getMavenCoords(),
+          args.getMavenPomTemplate());
     }
   }
 
-
-  @SuppressFieldNotInitialized
-  public static class Arg extends JavaLibraryDescription.Arg {
-    public ImmutableList<String> extraKotlincArguments = ImmutableList.of();
+  public interface CoreArg extends JavaLibraryDescription.CoreArg {
+    ImmutableList<String> getExtraKotlincArguments();
   }
+
+  @BuckStyleImmutable
+  @Value.Immutable
+  interface AbstractKotlinLibraryDescriptionArg extends CoreArg {}
 }

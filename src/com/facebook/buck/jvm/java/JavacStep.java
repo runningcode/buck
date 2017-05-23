@@ -33,16 +33,14 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
-/**
- * Command used to compile java libraries with a variety of ways to handle dependencies.
- */
+/** Command used to compile java libraries with a variety of ways to handle dependencies. */
 public class JavacStep implements Step {
 
   private final Path outputDirectory;
@@ -107,41 +105,36 @@ public class JavacStep implements Step {
   }
 
   private StepExecutionResult tryBuildWithFirstOrderDeps(
-      ExecutionContext context,
-      ProjectFilesystem filesystem)
+      ExecutionContext context, ProjectFilesystem filesystem)
       throws InterruptedException, IOException {
     try {
       javacOptions.validateOptions(classpathChecker::validateClasspath);
     } catch (IOException e) {
-      context.postEvent(
-          ConsoleEvent.severe("Invalid Java compiler options: %s", e.getMessage()));
+      context.postEvent(ConsoleEvent.severe("Invalid Java compiler options: %s", e.getMessage()));
       return StepExecutionResult.ERROR;
     }
 
     Verbosity verbosity =
         context.getVerbosity().isSilent() ? Verbosity.STANDARD_INFORMATION : context.getVerbosity();
-    try (
-      CapturingPrintStream stdout = new CapturingPrintStream();
-      CapturingPrintStream stderr = new CapturingPrintStream();
-      ExecutionContext firstOrderContext = context.createSubContext(
-          stdout,
-          stderr,
-          Optional.of(verbosity))) {
-      Javac javac = getJavac();
-      JavacExecutionContext javacExecutionContext = JavacExecutionContext.of(
-          new JavacEventSinkToBuckEventBusBridge(firstOrderContext.getBuckEventBus()),
-          stderr,
-          firstOrderContext.getClassLoaderCache(),
-          verbosity,
-          firstOrderContext.getCellPathResolver(),
-          firstOrderContext.getJavaPackageFinder(),
-          filesystem,
-          usedClassesFileWriter,
-          firstOrderContext.getEnvironment(),
-          firstOrderContext.getProcessExecutor(),
-          getAbsolutePathsForJavacInputs(javac),
-          directToJarOutputSettings);
-      return performBuild(context, stdout, stderr, javac, javacExecutionContext);
+    try (CapturingPrintStream stdout = new CapturingPrintStream();
+        CapturingPrintStream stderr = new CapturingPrintStream();
+        ExecutionContext firstOrderContext =
+            context.createSubContext(stdout, stderr, Optional.of(verbosity))) {
+      JavacExecutionContext javacExecutionContext =
+          JavacExecutionContext.of(
+              new JavacEventSinkToBuckEventBusBridge(firstOrderContext.getBuckEventBus()),
+              stderr,
+              firstOrderContext.getClassLoaderCache(),
+              verbosity,
+              firstOrderContext.getCellPathResolver(),
+              firstOrderContext.getJavaPackageFinder(),
+              filesystem,
+              usedClassesFileWriter,
+              firstOrderContext.getEnvironment(),
+              firstOrderContext.getProcessExecutor(),
+              getAbsolutePathsForJavacInputs(getJavac()),
+              directToJarOutputSettings);
+      return performBuild(context, stdout, stderr, getJavac(), javacExecutionContext);
     }
   }
 
@@ -150,16 +143,26 @@ public class JavacStep implements Step {
       CapturingPrintStream stdout,
       CapturingPrintStream stderr,
       Javac javac,
-      JavacExecutionContext javacExecutionContext) throws InterruptedException {
-    int declaredDepsBuildResult = javac.buildWithClasspath(
-        javacExecutionContext,
-        invokingRule,
-        getOptions(context, declaredClasspathEntries),
-        javacOptions.getAnnotationProcessingParams().getAnnotationProcessors(filesystem, resolver),
-        javaSourceFilePaths,
-        pathToSrcsList,
-        workingDirectory,
-        javacOptions.getCompilationMode());
+      JavacExecutionContext javacExecutionContext)
+      throws InterruptedException {
+    ImmutableList<JavacPluginJsr199Fields> pluginFields =
+        ImmutableList.copyOf(
+            javacOptions
+                .getAnnotationProcessingParams()
+                .getAnnotationProcessors(filesystem, resolver)
+                .stream()
+                .map(ResolvedJavacPluginProperties::getJavacPluginJsr199Fields)
+                .collect(Collectors.toList()));
+    int declaredDepsBuildResult =
+        javac.buildWithClasspath(
+            javacExecutionContext,
+            invokingRule,
+            getOptions(context, declaredClasspathEntries),
+            pluginFields,
+            javaSourceFilePaths,
+            pathToSrcsList,
+            workingDirectory,
+            javacOptions.getCompilationMode());
     String firstOrderStdout = stdout.getContentsAsString(Charsets.UTF_8);
     String firstOrderStderr = stderr.getContentsAsString(Charsets.UTF_8);
     Optional<String> returnedStderr;
@@ -172,19 +175,14 @@ public class JavacStep implements Step {
   }
 
   private Optional<String> processBuildFailure(
-      ExecutionContext context,
-      String firstOrderStdout,
-      String firstOrderStderr) {
+      ExecutionContext context, String firstOrderStdout, String firstOrderStderr) {
     ImmutableList.Builder<String> errorMessage = ImmutableList.builder();
     errorMessage.add(firstOrderStderr);
 
     ImmutableSet<String> suggestions = ImmutableSet.of();
-    CompilerErrorEvent evt = CompilerErrorEvent.create(
-        invokingRule,
-        firstOrderStderr,
-        CompilerErrorEvent.CompilerType.Java,
-        suggestions
-    );
+    CompilerErrorEvent evt =
+        CompilerErrorEvent.create(
+            invokingRule, firstOrderStderr, CompilerErrorEvent.CompilerType.Java, suggestions);
     context.postEvent(evt);
 
     if (!firstOrderStdout.isEmpty()) {
@@ -194,7 +192,9 @@ public class JavacStep implements Step {
   }
 
   private ImmutableList<Path> getAbsolutePathsForJavacInputs(Javac javac) {
-    return javac.getInputs().stream()
+    return javac
+        .getInputs()
+        .stream()
         .map(resolver::getAbsolutePath)
         .collect(MoreCollectors.toImmutableList());
   }
@@ -206,35 +206,30 @@ public class JavacStep implements Step {
 
   @Override
   public String getDescription(ExecutionContext context) {
-    return getJavac().getDescription(
-        getOptions(context, getClasspathEntries()),
-        javaSourceFilePaths,
-        pathToSrcsList);
+    return getJavac()
+        .getDescription(
+            getOptions(context, getClasspathEntries()), javaSourceFilePaths, pathToSrcsList);
   }
 
   @Override
   public String getShortName() {
-    return getJavac().getShortName();
+    return javacOptions.getCompilationMode() != JavacCompilationMode.ABI
+        ? getJavac().getShortName()
+        : "calculate_abi_from_source";
   }
 
   /**
-   * Returns a list of command-line options to pass to javac.  These options reflect
-   * the configuration of this javac command.
+   * Returns a list of command-line options to pass to javac. These options reflect the
+   * configuration of this javac command.
    *
    * @param context the ExecutionContext with in which javac will run
    * @return list of String command-line options.
    */
   @VisibleForTesting
   ImmutableList<String> getOptions(
-      ExecutionContext context,
-      ImmutableSortedSet<Path> buildClasspathEntries) {
+      ExecutionContext context, ImmutableSortedSet<Path> buildClasspathEntries) {
     return getOptions(
-        javacOptions,
-        filesystem,
-        resolver,
-        outputDirectory,
-        context,
-        buildClasspathEntries);
+        javacOptions, filesystem, resolver, outputDirectory, context, buildClasspathEntries);
   }
 
   public static ImmutableList<String> getOptions(
@@ -248,23 +243,23 @@ public class JavacStep implements Step {
 
     javacOptions.appendOptionsTo(
         new OptionsConsumer() {
-            @Override
-            public void addOptionValue(String option, String value) {
-              builder.add("-" + option).add(value);
-            }
+          @Override
+          public void addOptionValue(String option, String value) {
+            builder.add("-" + option).add(value);
+          }
 
-            @Override
-            public void addFlag(String flagName) {
-              builder.add("-" + flagName);
-            }
+          @Override
+          public void addFlag(String flagName) {
+            builder.add("-" + flagName);
+          }
 
-            @Override
-            public void addExtras(Collection<String> extras) {
-              builder.addAll(extras);
-            }
-          },
-          pathResolver,
-          filesystem);
+          @Override
+          public void addExtras(Collection<String> extras) {
+            builder.addAll(extras);
+          }
+        },
+        pathResolver,
+        filesystem);
 
     // verbose flag, if appropriate.
     if (context.getVerbosity().shouldUseVerbosityFlagIfAvailable()) {
@@ -285,9 +280,7 @@ public class JavacStep implements Step {
     return builder.build();
   }
 
-  /**
-   * @return The classpath entries used to invoke javac.
-   */
+  /** @return The classpath entries used to invoke javac. */
   @VisibleForTesting
   ImmutableSortedSet<Path> getClasspathEntries() {
     return declaredClasspathEntries;

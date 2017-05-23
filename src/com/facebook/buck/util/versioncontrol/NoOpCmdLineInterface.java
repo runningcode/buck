@@ -16,41 +16,16 @@
 
 package com.facebook.buck.util.versioncontrol;
 
-import com.facebook.buck.model.Pair;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 
-/***
- * This is used if the project being built doesn't use a supported VCS.
- */
+/** * This is used if the project being built doesn't use a supported VCS. */
 public class NoOpCmdLineInterface implements VersionControlCmdLineInterface {
   @Override
   public boolean isSupportedVersionControlSystem() throws InterruptedException {
     return false;
   }
 
-  @Override
-  public String revisionId(String name)
-      throws VersionControlCommandFailedException, InterruptedException {
-    throw new VersionControlCommandFailedException("");
-  }
-
-  @Override
   public String currentRevisionId()
-      throws VersionControlCommandFailedException, InterruptedException {
-    throw new VersionControlCommandFailedException("");
-  }
-
-  @Override
-  public String commonAncestor(
-      String revisionIdOne,
-      String revisionIdTwo)
-      throws VersionControlCommandFailedException, InterruptedException {
-    throw new VersionControlCommandFailedException("");
-  }
-
-  @Override
-  public Pair<String, Long> commonAncestorAndTS(String revisionIdOne, String revisionIdTwo)
       throws VersionControlCommandFailedException, InterruptedException {
     throw new VersionControlCommandFailedException("");
   }
@@ -68,15 +43,8 @@ public class NoOpCmdLineInterface implements VersionControlCmdLineInterface {
   }
 
   @Override
-  public long timestampSeconds(String revisionId)
-      throws VersionControlCommandFailedException, InterruptedException {
+  public FastVersionControlStats fastVersionControlStats()
+      throws InterruptedException, VersionControlCommandFailedException {
     throw new VersionControlCommandFailedException("");
   }
-
-  @Override
-  public ImmutableMap<String, String> bookmarksRevisionsId(ImmutableSet<String> bookmarks)
-    throws InterruptedException, VersionControlCommandFailedException {
-    throw new VersionControlCommandFailedException("");
-  }
-
 }

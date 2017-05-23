@@ -19,6 +19,7 @@ package com.facebook.buck.jvm.java;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.not;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeThat;
@@ -33,19 +34,17 @@ import com.facebook.buck.util.environment.Platform;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
-
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.jar.JarFile;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-
 public class JavaBinaryIntegrationTest extends AbiCompilationModeTest {
 
-  @Rule
-  public TemporaryPaths tmp = new TemporaryPaths();
+  @Rule public TemporaryPaths tmp = new TemporaryPaths();
 
   private ProjectWorkspace workspace;
 
@@ -84,10 +83,12 @@ public class JavaBinaryIntegrationTest extends AbiCompilationModeTest {
   public void disableCachingForBinaries() throws IOException {
     setUpProjectWorkspaceForScenario("java_binary_with_blacklist");
     workspace.enableDirCache();
-    workspace.runBuckBuild("-c", "java.cache_binaries=false", "//:bin-no-blacklist")
+    workspace
+        .runBuckBuild("-c", "java.cache_binaries=false", "//:bin-no-blacklist")
         .assertSuccess();
     workspace.runBuckCommand("clean").assertSuccess();
-    workspace.runBuckBuild("-c", "java.cache_binaries=false", "//:bin-no-blacklist")
+    workspace
+        .runBuckBuild("-c", "java.cache_binaries=false", "//:bin-no-blacklist")
         .assertSuccess();
     workspace.getBuildLog().assertTargetBuiltLocally("//:bin-no-blacklist");
   }
@@ -102,10 +103,7 @@ public class JavaBinaryIntegrationTest extends AbiCompilationModeTest {
   @Test
   public void fatJarWithVmArguments() throws IOException, InterruptedException {
     setUpProjectWorkspaceForScenario("fat_jar");
-    ImmutableList<String> args = ImmutableList.of(
-        "-ea",
-        "-Dfoo.bar.baz=1234",
-        "-Xms64m");
+    ImmutableList<String> args = ImmutableList.of("-ea", "-Dfoo.bar.baz=1234", "-Xms64m");
     String expected = Joiner.on("\n").join(args);
     Path jar = workspace.buildAndReturnOutput("//:bin-jvm-args");
     ProcessExecutor.Result result = workspace.runJar(jar, args);
@@ -122,22 +120,26 @@ public class JavaBinaryIntegrationTest extends AbiCompilationModeTest {
   }
 
   @Test
+  public void jarWithMetaInfo() throws IOException, InterruptedException {
+    setUpProjectWorkspaceForScenario("java_binary_with_meta_inf");
+    Path jar = workspace.buildAndReturnOutput("//:bin-meta-inf");
+    try (JarFile jarFile = new JarFile(jar.toFile())) {
+      assertNotNull(jarFile.getEntry("META-INF/test.txt"));
+    }
+  }
+
+  @Test
   public void fatJarWithBlacklist() throws IOException {
     setUpProjectWorkspaceForScenario("java_binary_with_blacklist");
     Path binaryJarWithBlacklist = workspace.buildAndReturnOutput("//:bin-blacklist");
     Path binaryJarWithoutBlacklist = workspace.buildAndReturnOutput("//:bin-no-blacklist");
 
-    ImmutableSet<String> commonEntries = ImmutableSet.of(
-        "META-INF/MANIFEST.MF",
-        "com/",
-        "com/example/",
-        "com/example/B.class"
-    );
-    ImmutableSet<String> blacklistedEntries = ImmutableSet.of(
-        "com/example/A.class",
-        "com/example/A$C.class",
-        "com/example/Alligator.class"
-    );
+    ImmutableSet<String> commonEntries =
+        ImmutableSet.of(
+            "META-INF/", "META-INF/MANIFEST.MF", "com/", "com/example/", "com/example/B.class");
+    ImmutableSet<String> blacklistedEntries =
+        ImmutableSet.of(
+            "com/example/A.class", "com/example/A$C.class", "com/example/Alligator.class");
     assertEquals(
         "com.example.Alligator, com.example.A and any inner classes should be removed.",
         commonEntries,
@@ -151,9 +153,13 @@ public class JavaBinaryIntegrationTest extends AbiCompilationModeTest {
   public void testJarWithCorruptInput() throws IOException {
     setUpProjectWorkspaceForScenario("corruption");
     workspace.runBuckBuild("//:simple-lib").assertSuccess();
-    String libJar = workspace.runBuckCommand("targets", "--show_output", "//:simple-lib")
-        .assertSuccess()
-        .getStdout().split(" ")[1].trim();
+    String libJar =
+        workspace
+            .runBuckCommand("targets", "--show_output", "//:simple-lib")
+            .assertSuccess()
+            .getStdout()
+            .split(" ")[1]
+            .trim();
 
     // Now corrupt the output jar.
     Path jarPath = workspace.getPath(libJar);
@@ -165,11 +171,11 @@ public class JavaBinaryIntegrationTest extends AbiCompilationModeTest {
 
     ProjectWorkspace.ProcessResult result = workspace.runBuckBuild("//:wrapper_01").assertFailure();
     // Should show the rule that failed.
-    assertThat(result.getStderr(), containsString("//:broken_01"));
+    assertThat(result.getStderr(), containsString("//:simple-lib"));
     // Should show the jar we were operating on.
     assertThat(result.getStderr(), containsString(libJar));
     // Should show the original exception.
-    assertThat(result.getStderr(), containsString("ZipException"));
+    assertThat(result.getStderr(), containsString("ZipError"));
   }
 
   private ProjectWorkspace setUpProjectWorkspaceForScenario(String scenario) throws IOException {

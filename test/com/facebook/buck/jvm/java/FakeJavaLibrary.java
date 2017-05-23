@@ -38,9 +38,9 @@ import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Ordering;
 import com.google.common.hash.HashCode;
-
 import java.nio.file.Path;
 import java.util.Optional;
+import java.util.Set;
 
 public class FakeJavaLibrary extends FakeBuildRule implements JavaLibrary, AndroidPackageable {
 
@@ -57,9 +57,7 @@ public class FakeJavaLibrary extends FakeBuildRule implements JavaLibrary, Andro
   }
 
   public FakeJavaLibrary(
-      BuildTarget target,
-      SourcePathResolver resolver,
-      ImmutableSortedSet<BuildRule> deps) {
+      BuildTarget target, SourcePathResolver resolver, ImmutableSortedSet<BuildRule> deps) {
     super(target, resolver, deps);
   }
 
@@ -78,7 +76,7 @@ public class FakeJavaLibrary extends FakeBuildRule implements JavaLibrary, Andro
   }
 
   @Override
-  public ImmutableSortedSet<BuildRule> getDepsForTransitiveClasspathEntries() {
+  public Set<BuildRule> getDepsForTransitiveClasspathEntries() {
     return getBuildDeps();
   }
 
@@ -106,6 +104,11 @@ public class FakeJavaLibrary extends FakeBuildRule implements JavaLibrary, Andro
   }
 
   @Override
+  public ImmutableSortedSet<SourcePath> getJarContents() {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public ImmutableSortedSet<SourcePath> getJavaSrcs() {
     return srcs;
   }
@@ -122,9 +125,10 @@ public class FakeJavaLibrary extends FakeBuildRule implements JavaLibrary, Andro
 
   public FakeJavaLibrary setJavaSrcs(ImmutableSortedSet<Path> srcs) {
     Preconditions.checkNotNull(srcs);
-    this.srcs = FluentIterable.from(srcs)
-        .transform(p -> (SourcePath) new PathSourcePath(new FakeProjectFilesystem(), p))
-        .toSortedSet(Ordering.natural());
+    this.srcs =
+        FluentIterable.from(srcs)
+            .transform(p -> (SourcePath) new PathSourcePath(new FakeProjectFilesystem(), p))
+            .toSortedSet(Ordering.natural());
     return this;
   }
 

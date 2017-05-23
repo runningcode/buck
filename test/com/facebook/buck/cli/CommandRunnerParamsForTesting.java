@@ -31,10 +31,11 @@ import com.facebook.buck.jvm.java.FakeJavaPackageFinder;
 import com.facebook.buck.parser.Parser;
 import com.facebook.buck.parser.ParserConfig;
 import com.facebook.buck.rules.ActionGraphCache;
+import com.facebook.buck.rules.BuildInfoStoreManager;
 import com.facebook.buck.rules.Cell;
-import com.facebook.buck.rules.coercer.ConstructorArgMarshaller;
 import com.facebook.buck.rules.KnownBuildRuleTypesFactory;
 import com.facebook.buck.rules.TestCellBuilder;
+import com.facebook.buck.rules.coercer.ConstructorArgMarshaller;
 import com.facebook.buck.rules.coercer.DefaultTypeCoercerFactory;
 import com.facebook.buck.rules.coercer.TypeCoercerFactory;
 import com.facebook.buck.step.ExecutorPool;
@@ -51,7 +52,6 @@ import com.facebook.buck.versions.VersionedTargetGraphCache;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.MoreExecutors;
-
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.Optional;
@@ -89,6 +89,7 @@ public class CommandRunnerParamsForTesting {
     TypeCoercerFactory typeCoercerFactory = new DefaultTypeCoercerFactory();
     return CommandRunnerParams.builder()
         .setConsole(console)
+        .setBuildInfoStoreManager(new BuildInfoStoreManager())
         .setStdIn(new ByteArrayInputStream("".getBytes("UTF-8")))
         .setCell(cell)
         .setAndroidPlatformTargetSupplier(
@@ -98,6 +99,7 @@ public class CommandRunnerParamsForTesting {
                 eventBus))
         .setArtifactCacheFactory(new SingletonArtifactCacheFactory(artifactCache))
         .setBuckEventBus(eventBus)
+        .setTypeCoercerFactory(typeCoercerFactory)
         .setParser(
             new Parser(
                 new BroadcastEventListener(),
@@ -113,9 +115,7 @@ public class CommandRunnerParamsForTesting {
         .setBuckConfig(config)
         .setFileHashCache(new StackedFileHashCache(ImmutableList.of()))
         .setExecutors(
-            ImmutableMap.of(
-                ExecutorPool.PROJECT,
-                MoreExecutors.newDirectExecutorService()))
+            ImmutableMap.of(ExecutorPool.PROJECT, MoreExecutors.newDirectExecutorService()))
         .setBuildEnvironmentDescription(BUILD_ENVIRONMENT_DESCRIPTION)
         .setVersionControlStatsGenerator(
             new VersionControlStatsGenerator(new NoOpCmdLineInterface(), Optional.empty()))
@@ -143,8 +143,7 @@ public class CommandRunnerParamsForTesting {
     private JavaPackageFinder javaPackageFinder = new FakeJavaPackageFinder();
     private Optional<WebServer> webServer = Optional.empty();
 
-    public CommandRunnerParams build()
-        throws IOException, InterruptedException{
+    public CommandRunnerParams build() throws IOException, InterruptedException {
       return createCommandRunnerParamsForTesting(
           console,
           new TestCellBuilder().build(),
@@ -172,6 +171,5 @@ public class CommandRunnerParamsForTesting {
       this.artifactCache = cache;
       return this;
     }
-
   }
 }

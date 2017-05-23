@@ -40,7 +40,6 @@ import com.google.common.hash.Hashing;
 import com.google.common.io.ByteStreams;
 import com.google.common.jimfs.Configuration;
 import com.google.common.jimfs.Jimfs;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -79,7 +78,6 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.JarInputStream;
 import java.util.jar.Manifest;
-
 import javax.annotation.Nullable;
 
 // TODO(natthu): Implement methods that throw UnsupportedOperationException.
@@ -209,21 +207,25 @@ public class FakeProjectFilesystem extends ProjectFilesystem {
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
-    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-      try {
-        MoreFiles.deleteRecursively(tempDir);
-      } catch (IOException e) { // NOPMD
-        // Swallow. At least we tried, right?
-      }
-    }));
+    Runtime.getRuntime()
+        .addShutdownHook(
+            new Thread(
+                () -> {
+                  try {
+                    MoreFiles.deleteRecursively(tempDir);
+                  } catch (IOException e) { // NOPMD
+                    // Swallow. At least we tried, right?
+                  }
+                }));
     return new FakeProjectFilesystem(tempDir);
   }
 
-  public static ProjectFilesystem createJavaOnlyFilesystem() {
+  public static ProjectFilesystem createJavaOnlyFilesystem() throws InterruptedException {
     return createJavaOnlyFilesystem("/opt/src/buck");
   }
 
-  public static ProjectFilesystem createJavaOnlyFilesystem(String rootPath) {
+  public static ProjectFilesystem createJavaOnlyFilesystem(String rootPath)
+      throws InterruptedException {
     boolean isWindows = Platform.detect() == Platform.WINDOWS;
 
     Configuration configuration = isWindows ? Configuration.windows() : Configuration.unix();
@@ -327,21 +329,19 @@ public class FakeProjectFilesystem extends ProjectFilesystem {
     directories.clear();
   }
 
-  public BasicFileAttributes readBasicAttributes(
-      Path pathRelativeToProjectRoot) throws IOException {
+  public BasicFileAttributes readBasicAttributes(Path pathRelativeToProjectRoot)
+      throws IOException {
     if (!exists(pathRelativeToProjectRoot)) {
       throw new NoSuchFileException(pathRelativeToProjectRoot.toString());
     }
     return isFile(pathRelativeToProjectRoot)
-           ? FakeFileAttributes.forFileWithSize(pathRelativeToProjectRoot, 0)
-           : FakeFileAttributes.forDirectory(pathRelativeToProjectRoot);
+        ? FakeFileAttributes.forFileWithSize(pathRelativeToProjectRoot, 0)
+        : FakeFileAttributes.forDirectory(pathRelativeToProjectRoot);
   }
 
   @Override
   public <A extends BasicFileAttributes> A readAttributes(
-      Path pathRelativeToProjectRoot,
-      Class<A> type,
-      LinkOption... options) throws IOException {
+      Path pathRelativeToProjectRoot, Class<A> type, LinkOption... options) throws IOException {
     if (type == BasicFileAttributes.class) {
       return type.cast(readBasicAttributes(pathRelativeToProjectRoot));
     }
@@ -400,15 +400,12 @@ public class FakeProjectFilesystem extends ProjectFilesystem {
     return false;
   }
 
-  /**
-   * Does not support symlinks.
-   */
+  /** Does not support symlinks. */
   @Override
   public final ImmutableCollection<Path> getDirectoryContents(final Path pathRelativeToProjectRoot)
       throws IOException {
     Preconditions.checkState(isDirectory(pathRelativeToProjectRoot));
-    return FluentIterable
-        .from(fileContents.keySet())
+    return FluentIterable.from(fileContents.keySet())
         .append(directories)
         .filter(
             input -> {
@@ -422,24 +419,28 @@ public class FakeProjectFilesystem extends ProjectFilesystem {
 
   @Override
   public ImmutableSortedSet<Path> getMtimeSortedMatchingDirectoryContents(
-      final Path pathRelativeToProjectRoot,
-      String globPattern)
-      throws IOException {
+      final Path pathRelativeToProjectRoot, String globPattern) throws IOException {
     Preconditions.checkState(isDirectory(pathRelativeToProjectRoot));
     final PathMatcher pathMatcher = FileSystems.getDefault().getPathMatcher("glob:" + globPattern);
 
-    return fileContents.keySet().stream()
-        .filter(i -> i.getParent().equals(pathRelativeToProjectRoot) &&
-            pathMatcher.matches(i.getFileName()))
+    return fileContents
+        .keySet()
+        .stream()
+        .filter(
+            i ->
+                i.getParent().equals(pathRelativeToProjectRoot)
+                    && pathMatcher.matches(i.getFileName()))
         // Sort them in reverse order.
-        .sorted((f0, f1) -> {
-          try {
-            return getLastModifiedTimeFetcher().getLastModifiedTime(f1).compareTo(
-                getLastModifiedTimeFetcher().getLastModifiedTime(f0));
-          } catch (IOException e) {
-            throw new RuntimeException(e);
-          }
-        })
+        .sorted(
+            (f0, f1) -> {
+              try {
+                return getLastModifiedTimeFetcher()
+                    .getLastModifiedTime(f1)
+                    .compareTo(getLastModifiedTimeFetcher().getLastModifiedTime(f0));
+              } catch (IOException e) {
+                throw new RuntimeException(e);
+              }
+            })
         .collect(MoreCollectors.toImmutableSortedSet());
   }
 
@@ -470,7 +471,7 @@ public class FakeProjectFilesystem extends ProjectFilesystem {
   @Override
   public void deleteRecursivelyIfExists(Path path) throws IOException {
     Path normalizedPath = MorePaths.normalize(path);
-    for (Iterator<Path> iterator = fileContents.keySet().iterator(); iterator.hasNext();) {
+    for (Iterator<Path> iterator = fileContents.keySet().iterator(); iterator.hasNext(); ) {
       Path subPath = iterator.next();
       if (subPath.startsWith(normalizedPath)) {
         fileAttributes.remove(MorePaths.normalize(subPath));
@@ -478,7 +479,7 @@ public class FakeProjectFilesystem extends ProjectFilesystem {
         iterator.remove();
       }
     }
-    for (Iterator<Path> iterator = symLinks.keySet().iterator(); iterator.hasNext();) {
+    for (Iterator<Path> iterator = symLinks.keySet().iterator(); iterator.hasNext(); ) {
       Path subPath = iterator.next();
       if (subPath.startsWith(normalizedPath)) {
         iterator.remove();
@@ -503,10 +504,7 @@ public class FakeProjectFilesystem extends ProjectFilesystem {
   }
 
   @Override
-  public void writeLinesToPath(
-      Iterable<String> lines,
-      Path path,
-      FileAttribute<?>... attrs) {
+  public void writeLinesToPath(Iterable<String> lines, Path path, FileAttribute<?>... attrs) {
     StringBuilder builder = new StringBuilder();
     if (!Iterables.isEmpty(lines)) {
       Joiner.on('\n').appendTo(builder, lines);
@@ -516,18 +514,12 @@ public class FakeProjectFilesystem extends ProjectFilesystem {
   }
 
   @Override
-  public void writeContentsToPath(
-      String contents,
-      Path path,
-      FileAttribute<?>... attrs) {
+  public void writeContentsToPath(String contents, Path path, FileAttribute<?>... attrs) {
     writeBytesToPath(contents.getBytes(Charsets.UTF_8), path, attrs);
   }
 
   @Override
-  public void writeBytesToPath(
-      byte[] bytes,
-      Path path,
-      FileAttribute<?>... attrs) {
+  public void writeBytesToPath(byte[] bytes, Path path, FileAttribute<?>... attrs) {
     Path normalizedPath = MorePaths.normalize(path);
     fileContents.put(normalizedPath, Preconditions.checkNotNull(bytes));
     fileAttributes.put(normalizedPath, ImmutableSet.copyOf(attrs));
@@ -542,8 +534,7 @@ public class FakeProjectFilesystem extends ProjectFilesystem {
 
   @Override
   public OutputStream newFileOutputStream(
-      final Path pathRelativeToProjectRoot,
-      final FileAttribute<?>... attrs) throws IOException {
+      final Path pathRelativeToProjectRoot, final FileAttribute<?>... attrs) throws IOException {
     return new ByteArrayOutputStream() {
       @Override
       public void close() throws IOException {
@@ -563,19 +554,15 @@ public class FakeProjectFilesystem extends ProjectFilesystem {
     };
   }
 
-  /**
-   * Does not support symlinks.
-   */
+  /** Does not support symlinks. */
   @Override
-  public InputStream newFileInputStream(Path pathRelativeToProjectRoot)
-    throws IOException {
+  public InputStream newFileInputStream(Path pathRelativeToProjectRoot) throws IOException {
     byte[] contents = fileContents.get(normalizePathToProjectRoot(pathRelativeToProjectRoot));
     return new ByteArrayInputStream(contents);
   }
 
-
   private Path normalizePathToProjectRoot(Path pathRelativeToProjectRoot)
-    throws NoSuchFileException {
+      throws NoSuchFileException {
     if (!exists(pathRelativeToProjectRoot)) {
       throw new NoSuchFileException(pathRelativeToProjectRoot.toString());
     }
@@ -588,9 +575,7 @@ public class FakeProjectFilesystem extends ProjectFilesystem {
     writeBytesToPath(ByteStreams.toByteArray(inputStream), path);
   }
 
-  /**
-   * Does not support symlinks.
-   */
+  /** Does not support symlinks. */
   @Override
   public Optional<String> readFileIfItExists(Path path) {
     if (!exists(path)) {
@@ -599,9 +584,7 @@ public class FakeProjectFilesystem extends ProjectFilesystem {
     return Optional.of(new String(getFileBytes(path), Charsets.UTF_8));
   }
 
-  /**
-   * Does not support symlinks.
-   */
+  /** Does not support symlinks. */
   @Override
   public Optional<String> readFirstLine(Path path) {
     List<String> lines;
@@ -614,9 +597,7 @@ public class FakeProjectFilesystem extends ProjectFilesystem {
     return Optional.ofNullable(Iterables.get(lines, 0, null));
   }
 
-  /**
-   * Does not support symlinks.
-   */
+  /** Does not support symlinks. */
   @Override
   public List<String> readLines(Path path) throws IOException {
     Optional<String> contents = readFileIfItExists(path);
@@ -652,9 +633,7 @@ public class FakeProjectFilesystem extends ProjectFilesystem {
     return null;
   }
 
-  /**
-   * Does not support symlinks.
-   */
+  /** Does not support symlinks. */
   @Override
   public Sha1HashCode computeSha1(Path pathRelativeToProjectRootOrJustAbsolute) throws IOException {
     if (!exists(pathRelativeToProjectRootOrJustAbsolute)) {
@@ -687,14 +666,13 @@ public class FakeProjectFilesystem extends ProjectFilesystem {
   }
 
   /**
-   * TODO(natthu): (1) Also traverse the directories. (2) Do not ignore return value of
-   * {@code fileVisitor}.
+   * TODO(natthu): (1) Also traverse the directories. (2) Do not ignore return value of {@code
+   * fileVisitor}.
    */
   @Override
   public final void walkRelativeFileTree(
-      Path path,
-      EnumSet<FileVisitOption> visitOptions,
-      FileVisitor<Path> fileVisitor) throws IOException {
+      Path path, EnumSet<FileVisitOption> visitOptions, FileVisitor<Path> fileVisitor)
+      throws IOException {
 
     if (!isDirectory(path)) {
       fileVisitor.visitFile(path, DEFAULT_FILE_ATTRIBUTES);
@@ -778,10 +756,7 @@ public class FakeProjectFilesystem extends ProjectFilesystem {
 
   @Override
   public Path createTempFile(
-      Path directory,
-      String prefix,
-      String suffix,
-      FileAttribute<?>... attrs) throws IOException {
+      Path directory, String prefix, String suffix, FileAttribute<?>... attrs) throws IOException {
     Path path;
     do {
       String str = new BigInteger(130, RANDOM).toString(32);
@@ -794,9 +769,9 @@ public class FakeProjectFilesystem extends ProjectFilesystem {
   @Override
   public void move(Path source, Path target, CopyOption... options) throws IOException {
     fileContents.put(MorePaths.normalize(target), fileContents.remove(MorePaths.normalize(source)));
-    fileAttributes.put(MorePaths.normalize(target),
-        fileAttributes.remove(MorePaths.normalize(source)));
-    fileLastModifiedTimes.put(MorePaths.normalize(target),
-        fileLastModifiedTimes.remove(MorePaths.normalize(source)));
+    fileAttributes.put(
+        MorePaths.normalize(target), fileAttributes.remove(MorePaths.normalize(source)));
+    fileLastModifiedTimes.put(
+        MorePaths.normalize(target), fileLastModifiedTimes.remove(MorePaths.normalize(source)));
   }
 }

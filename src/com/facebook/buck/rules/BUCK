@@ -12,16 +12,28 @@ java_library(
 )
 
 java_library(
+    name = "source_path_interface",
+    srcs = [
+        "SourcePath.java",
+    ],
+    visibility = [
+        "PUBLIC",
+    ],
+    deps = ["//third-party/java/guava:guava"],
+)
+
+java_library(
     name = "source_path",
     srcs = [
-        "AbstractSourcePath.java",
-        "ArchiveMemberSourcePath.java",
         "BuildTargetSourcePath.java",
         "DefaultBuildTargetSourcePath.java",
         "ExplicitBuildTargetSourcePath.java",
         "ForwardingBuildTargetSourcePath.java",
         "PathSourcePath.java",
-        "SourcePath.java",
+    ],
+    exported_deps = [
+        ":archive_member_source_path",
+        ":source_path_interface",
     ],
     visibility = ["PUBLIC"],
     deps = [
@@ -29,6 +41,19 @@ java_library(
         "//src/com/facebook/buck/model:model",
         "//src/com/facebook/buck/model:simple_types",
         "//third-party/java/guava:guava",
+    ],
+)
+
+java_immutables_library(
+    name = "archive_member_source_path",
+    srcs = [
+        "AbstractArchiveMemberSourcePath.java",
+    ],
+    visibility = [
+        "PUBLIC",
+    ],
+    deps = [
+        ":source_path_interface",
     ],
 )
 
@@ -68,6 +93,8 @@ java_immutables_library(
         ":interfaces",
         ":relative_cell_name",
         ":rules",
+        "//src/com/facebook/buck/android:config",
+        "//src/com/facebook/buck/android:cxxruntime",
         "//src/com/facebook/buck/android:rules",
         "//src/com/facebook/buck/android:steps",
         "//src/com/facebook/buck/android:utils",
@@ -141,6 +168,26 @@ java_library(
     ],
 )
 
+java_library(
+    name = "abstract_description_arg",
+    srcs = [
+        "AbstractDescriptionArg.java",
+        "CommonDescriptionArg.java",
+        "HasDeclaredDeps.java",
+        "HasSrcs.java",
+        "HasTests.java",
+        "Hint.java",
+    ],
+    visibility = ["PUBLIC"],
+    deps = [
+        ":source_path",
+        "//src/com/facebook/buck/model:model",
+        "//third-party/java/guava:guava",
+        "//third-party/java/immutables:immutables",
+        "//third-party/java/infer-annotations:infer-annotations",
+    ],
+)
+
 # Ideally, BuildRule.java would require only a handful of other source files
 # in order to compile it. Because BuildContext is referenced in the BuildRule
 # interface, its dependencies are much broader than desired.
@@ -152,7 +199,6 @@ java_immutables_library(
         "AbstractBuildRule.java",
         "AbstractBuildRuleType.java",
         "AbstractBuildRuleWithResolver.java",
-        "AbstractDescriptionArg.java",
         "AbstractExopackageInfo.java",
         "AbstractExternalTestRunnerTestSpec.java",
         "AbstractSourceWithFlags.java",
@@ -191,13 +237,11 @@ java_immutables_library(
         "OnDiskBuildInfo.java",
         "RecordFileSha1Step.java",
         "RuleKeyAppendable.java",
-        "RuleKeyFieldCategory.java",
         "RuleKeyObjectSink.java",
         "SourcePathResolver.java",
         "SourcePathRuleFinder.java",
         "SourceRoot.java",
         "TargetGraph.java",
-        "TargetName.java",
         "TargetNode.java",
         "TargetNodeFactory.java",
         "TargetNodeToBuildRuleTransformer.java",
@@ -206,6 +250,7 @@ java_immutables_library(
         "ToolProvider.java",
     ],
     exported_deps = [
+        ":abstract_description_arg",
         ":visibility",
     ],
     resources = [
@@ -307,12 +352,12 @@ java_immutables_library(
         "AbstractCachingBuildEngineBuckConfig.java",
         "AbstractResourceAwareSchedulingInfo.java",
         "AbstractRuleScheduleInfo.java",
-        "AssociatedTargetNodePredicate.java",
         "BinaryWrapperRule.java",
         "BuildEngine.java",
         "BuildInfo.java",
         "BuildInfoRecorder.java",
         "BuildInfoStore.java",
+        "BuildInfoStoreManager.java",
         "BuildOutputInitializer.java",
         "BuildResult.java",
         "BuildRuleCacheEvent.java",
@@ -326,12 +371,12 @@ java_immutables_library(
         "IndividualTestEvent.java",
         "InitializableFromDisk.java",
         "Manifest.java",
+        "MapDBBuildInfoStore.java",
         "NoopBuildRule.java",
         "OverrideScheduleRule.java",
-        "ProjectConfig.java",
-        "ProjectConfigDescription.java",
         "RocksDBBuildInfoStore.java",
         "RuleDepsCache.java",
+        "SQLiteBuildInfoStore.java",
         "SymlinkTree.java",
         "TargetGraphAndTargets.java",
         "TestRule.java",
@@ -386,7 +431,9 @@ java_immutables_library(
         "//third-party/java/infer-annotations:infer-annotations",
         "//third-party/java/jackson:jackson-annotations",
         "//third-party/java/jackson:jackson-databind",
+        "//third-party/java/mapdb:mapdb",
         "//third-party/java/rocksdbjni:rocksdbjni",
+        "//third-party/java/sqlite:sqlite",
         "//third-party/java/stringtemplate:stringtemplate",
     ],
 )
@@ -483,6 +530,25 @@ java_binary(
     main_class = "com.facebook.buck.rules.RocksDBMetadataDumper",
     deps = [
         ":rocksdb-metadata-dumper",
+    ],
+)
+
+java_library(
+    name = "mapdb-command-line",
+    srcs = [
+        "MapDBCommandLine.java",
+    ],
+    deps = [
+        "//third-party/java/args4j:args4j",
+        "//third-party/java/mapdb:mapdb",
+    ],
+)
+
+java_binary(
+    name = "mapdb",
+    main_class = "com.facebook.buck.rules.MapDBCommandLine",
+    deps = [
+        ":mapdb-command-line",
     ],
 )
 

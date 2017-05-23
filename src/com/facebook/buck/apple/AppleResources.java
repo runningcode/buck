@@ -23,7 +23,6 @@ import com.facebook.buck.rules.TargetNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.FluentIterable;
 import com.google.common.collect.ImmutableSet;
-
 import java.util.Optional;
 import java.util.function.Predicate;
 
@@ -34,7 +33,7 @@ public class AppleResources {
       node -> node.getDescription() instanceof HasAppleBundleResourcesDescription;
 
   // Utility class, do not instantiate.
-  private AppleResources() { }
+  private AppleResources() {}
 
   /**
    * Collect resources from recursive dependencies.
@@ -43,21 +42,20 @@ public class AppleResources {
    * @param targetNodes {@link TargetNode} at the tip of the traversal.
    * @return The recursive resource buildables.
    */
-  public static ImmutableSet<AppleResourceDescription.Arg> collectRecursiveResources(
+  public static ImmutableSet<AppleResourceDescriptionArg> collectRecursiveResources(
       final TargetGraph targetGraph,
       final Optional<AppleDependenciesCache> cache,
       Iterable<? extends TargetNode<?, ?>> targetNodes) {
-    return FluentIterable
-        .from(targetNodes)
-        .transformAndConcat(node ->
-            AppleBuildRules.getRecursiveTargetNodeDependenciesOfTypes(
-                targetGraph,
-                cache,
-                AppleBuildRules.RecursiveDependenciesMode.COPYING,
-                node,
-                ImmutableSet.of(AppleResourceDescription.class)))
-        .transform(
-            input -> (AppleResourceDescription.Arg) input.getConstructorArg())
+    return FluentIterable.from(targetNodes)
+        .transformAndConcat(
+            node ->
+                AppleBuildRules.getRecursiveTargetNodeDependenciesOfTypes(
+                    targetGraph,
+                    cache,
+                    AppleBuildRules.RecursiveDependenciesMode.COPYING,
+                    node,
+                    ImmutableSet.of(AppleResourceDescription.class)))
+        .transform(input -> (AppleResourceDescriptionArg) input.getConstructorArg())
         .toSet();
   }
 
@@ -90,14 +88,13 @@ public class AppleResources {
     return builder.build();
   }
 
-  public static ImmutableSet<AppleResourceDescription.Arg> collectDirectResources(
-      TargetGraph targetGraph,
-      TargetNode<?, ?> targetNode) {
-    ImmutableSet.Builder<AppleResourceDescription.Arg> builder = ImmutableSet.builder();
+  public static ImmutableSet<AppleResourceDescriptionArg> collectDirectResources(
+      TargetGraph targetGraph, TargetNode<?, ?> targetNode) {
+    ImmutableSet.Builder<AppleResourceDescriptionArg> builder = ImmutableSet.builder();
     Iterable<TargetNode<?, ?>> deps = targetGraph.getAll(targetNode.getBuildDeps());
     for (TargetNode<?, ?> node : deps) {
       if (node.getDescription() instanceof AppleResourceDescription) {
-        builder.add((AppleResourceDescription.Arg) node.getConstructorArg());
+        builder.add((AppleResourceDescriptionArg) node.getConstructorArg());
       }
     }
     return builder.build();

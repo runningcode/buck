@@ -25,6 +25,7 @@ import static org.junit.Assert.assertThat;
 
 import com.facebook.buck.cli.FakeBuckConfig;
 import com.facebook.buck.io.ProjectFilesystem;
+import com.facebook.buck.model.BuildTarget;
 import com.facebook.buck.rules.BuildRuleResolver;
 import com.facebook.buck.rules.DefaultTargetNodeToBuildRuleTransformer;
 import com.facebook.buck.rules.SourcePathResolver;
@@ -37,27 +38,24 @@ import com.facebook.buck.testutil.integration.TemporaryPaths;
 import com.google.common.collect.ImmutableBiMap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-
-import org.hamcrest.Matchers;
-import org.junit.Rule;
-import org.junit.Test;
-
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Optional;
+import org.hamcrest.Matchers;
+import org.junit.Rule;
+import org.junit.Test;
 
 public class CxxCompileStepIntegrationTest {
 
-  @Rule
-  public TemporaryPaths tmp = new TemporaryPaths();
+  @Rule public TemporaryPaths tmp = new TemporaryPaths();
 
   private void assertCompDir(Path compDir, Optional<String> failure) throws Exception {
     ProjectFilesystem filesystem = new ProjectFilesystem(tmp.getRoot());
-    CxxPlatform platform = CxxPlatformUtils.build(
-        new CxxBuckConfig(FakeBuckConfig.builder().build()));
+    CxxPlatform platform =
+        CxxPlatformUtils.build(new CxxBuckConfig(FakeBuckConfig.builder().build()));
 
     // Build up the paths to various files the archive step will use.
     BuildRuleResolver resolver =
@@ -73,41 +71,26 @@ public class CxxCompileStepIntegrationTest {
     Path scratchDir = filesystem.getPath("scratchDir");
     filesystem.mkdirs(scratchDir);
 
-    ImmutableList.Builder<String> preprocessorArguments = ImmutableList.builder();
-
     ImmutableList.Builder<String> compilerArguments = ImmutableList.builder();
     compilerArguments.add("-g");
 
-    DebugPathSanitizer sanitizer = new MungingDebugPathSanitizer(
-        200,
-        File.separatorChar,
-        compDir,
-        ImmutableBiMap.of());
+    DebugPathSanitizer sanitizer =
+        new MungingDebugPathSanitizer(200, File.separatorChar, compDir, ImmutableBiMap.of());
 
     // Build an archive step.
     CxxPreprocessAndCompileStep step =
         new CxxPreprocessAndCompileStep(
+            BuildTarget.builder(tmp.getRoot(), "//foo", "bar").build(),
             filesystem,
             CxxPreprocessAndCompileStep.Operation.PREPROCESS_AND_COMPILE,
             output,
-            depFile,
+            Optional.of(depFile),
             relativeInput,
             CxxSource.Type.C,
-            Optional.of(
-                new CxxPreprocessAndCompileStep.ToolCommand(
-                    compilerCommandPrefix,
-                    preprocessorArguments.build(),
-                    ImmutableMap.of(),
-                    Optional.empty())),
-            Optional.of(
-                new CxxPreprocessAndCompileStep.ToolCommand(
-                    compilerCommandPrefix,
-                    compilerArguments.build(),
-                    ImmutableMap.of(),
-                    Optional.empty())),
+            new CxxPreprocessAndCompileStep.ToolCommand(
+                compilerCommandPrefix, compilerArguments.build(), ImmutableMap.of()),
             HeaderPathNormalizer.empty(pathResolver),
             sanitizer,
-            CxxPlatformUtils.DEFAULT_ASSEMBLER_DEBUG_PATH_SANITIZER,
             scratchDir,
             true,
             compiler);
@@ -126,9 +109,7 @@ public class CxxCompileStepIntegrationTest {
       assertEquals("compile step failed: " + console.getTextWrittenToStdErr(), 0, exitCode);
       // Verify that we find the expected compilation dir embedded in the file.
       String contents = new String(Files.readAllBytes(output));
-      assertThat(
-          contents,
-          Matchers.containsString(sanitizer.getCompilationDirectory()));
+      assertThat(contents, Matchers.containsString(sanitizer.getCompilationDirectory()));
     }
 
     // Cleanup.
@@ -145,8 +126,8 @@ public class CxxCompileStepIntegrationTest {
   @Test
   public void createsAnArgfile() throws Exception {
     ProjectFilesystem filesystem = new ProjectFilesystem(tmp.getRoot());
-    CxxPlatform platform = CxxPlatformUtils.build(
-        new CxxBuckConfig(FakeBuckConfig.builder().build()));
+    CxxPlatform platform =
+        CxxPlatformUtils.build(new CxxBuckConfig(FakeBuckConfig.builder().build()));
 
     // Build up the paths to various files the archive step will use.
     BuildRuleResolver resolver =
@@ -162,35 +143,23 @@ public class CxxCompileStepIntegrationTest {
     Path scratchDir = filesystem.getPath("scratchDir");
     filesystem.mkdirs(scratchDir);
 
-    ImmutableList.Builder<String> preprocessorArguments = ImmutableList.builder();
-
     ImmutableList.Builder<String> compilerArguments = ImmutableList.builder();
     compilerArguments.add("-g");
 
     // Build an archive step.
     CxxPreprocessAndCompileStep step =
         new CxxPreprocessAndCompileStep(
+            BuildTarget.builder(tmp.getRoot(), "//foo", "bar").build(),
             filesystem,
             CxxPreprocessAndCompileStep.Operation.PREPROCESS_AND_COMPILE,
             output,
-            depFile,
+            Optional.of(depFile),
             relativeInput,
             CxxSource.Type.C,
-            Optional.of(
-                new CxxPreprocessAndCompileStep.ToolCommand(
-                    compilerCommandPrefix,
-                    preprocessorArguments.build(),
-                    ImmutableMap.of(),
-                    Optional.empty())),
-            Optional.of(
-                new CxxPreprocessAndCompileStep.ToolCommand(
-                    compilerCommandPrefix,
-                    compilerArguments.build(),
-                    ImmutableMap.of(),
-                    Optional.empty())),
+            new CxxPreprocessAndCompileStep.ToolCommand(
+                compilerCommandPrefix, compilerArguments.build(), ImmutableMap.of()),
             HeaderPathNormalizer.empty(pathResolver),
             CxxPlatformUtils.DEFAULT_COMPILER_DEBUG_PATH_SANITIZER,
-            CxxPlatformUtils.DEFAULT_ASSEMBLER_DEBUG_PATH_SANITIZER,
             scratchDir,
             true,
             compiler);
@@ -203,14 +172,10 @@ public class CxxCompileStepIntegrationTest {
 
     Path argfile = filesystem.resolve(scratchDir.resolve("ppandcompile.argsfile"));
     assertThat(filesystem, pathExists(argfile));
-    assertThat(
-        Files.readAllLines(argfile, StandardCharsets.UTF_8),
-        hasItem(
-            equalTo("-g")));
+    assertThat(Files.readAllLines(argfile, StandardCharsets.UTF_8), hasItem(equalTo("-g")));
 
     // Cleanup.
     Files.delete(input);
     Files.deleteIfExists(output);
   }
-
 }

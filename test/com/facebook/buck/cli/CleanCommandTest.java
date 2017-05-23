@@ -28,13 +28,14 @@ import com.facebook.buck.event.BuckEventBusFactory;
 import com.facebook.buck.event.listener.BroadcastEventListener;
 import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.jvm.java.FakeJavaPackageFinder;
-import com.facebook.buck.ide.intellij.IjAndroidHelper;
 import com.facebook.buck.parser.Parser;
 import com.facebook.buck.rules.ActionGraphCache;
+import com.facebook.buck.rules.BuildInfoStoreManager;
 import com.facebook.buck.rules.Cell;
 import com.facebook.buck.rules.KnownBuildRuleTypesFactory;
 import com.facebook.buck.rules.RelativeCellName;
 import com.facebook.buck.rules.TestCellBuilder;
+import com.facebook.buck.rules.coercer.TypeCoercerFactory;
 import com.facebook.buck.testutil.FakeProjectFilesystem;
 import com.facebook.buck.testutil.TestConsole;
 import com.facebook.buck.timing.DefaultClock;
@@ -47,20 +48,16 @@ import com.facebook.buck.versions.VersionedTargetGraphCache;
 import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.Optional;
 import org.easymock.EasyMockSupport;
 import org.junit.Before;
 import org.junit.Test;
 import org.kohsuke.args4j.CmdLineException;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.nio.file.Path;
-import java.util.Optional;
-
-/**
- * Unit test for {@link CleanCommand}.
- */
+/** Unit test for {@link CleanCommand}. */
 public class CleanCommandTest extends EasyMockSupport {
 
   private ProjectFilesystem projectFilesystem;
@@ -94,24 +91,6 @@ public class CleanCommandTest extends EasyMockSupport {
   }
 
   @Test
-  public void testCleanCommandWithProjectArgument()
-      throws CmdLineException, IOException, InterruptedException {
-    CleanCommand cleanCommand = createCommandFromArgs("--project");
-    CommandRunnerParams params = createCommandRunnerParams(cleanCommand);
-
-    // Set up mocks.
-    projectFilesystem.mkdirs(IjAndroidHelper.getAndroidGenPath(projectFilesystem));
-    projectFilesystem.mkdirs(projectFilesystem.getBuckPaths().getAnnotationDir());
-
-    // Simulate `buck clean --project`.
-    int exitCode = cleanCommand.run(params);
-    assertEquals(0, exitCode);
-
-    assertFalse(projectFilesystem.exists(IjAndroidHelper.getAndroidGenPath(projectFilesystem)));
-    assertFalse(projectFilesystem.exists(projectFilesystem.getBuckPaths().getAnnotationDir()));
-  }
-
-  @Test
   public void testCleanCommandWithAdditionalPaths()
       throws CmdLineException, IOException, InterruptedException {
     Path additionalPath = projectFilesystem.getPath("foo");
@@ -138,29 +117,28 @@ public class CleanCommandTest extends EasyMockSupport {
 
   private CommandRunnerParams createCommandRunnerParams(AbstractCommand command)
       throws InterruptedException, IOException {
-    BuckConfig buckConfig = FakeBuckConfig.builder()
-      .setSections(
-        command.getConfigOverrides().getForCell(RelativeCellName.ROOT_CELL_NAME))
-      .build();
-    Cell cell = new TestCellBuilder()
-      .setFilesystem(projectFilesystem)
-      .setBuckConfig(buckConfig)
-      .build();
+    BuckConfig buckConfig =
+        FakeBuckConfig.builder()
+            .setSections(command.getConfigOverrides().getForCell(RelativeCellName.ROOT_CELL_NAME))
+            .build();
+    Cell cell =
+        new TestCellBuilder().setFilesystem(projectFilesystem).setBuckConfig(buckConfig).build();
     return createCommandRunnerParams(buckConfig, cell);
   }
 
-  private CommandRunnerParams createCommandRunnerParams(
-      BuckConfig buckConfig,
-      Cell cell) throws InterruptedException, IOException {
+  private CommandRunnerParams createCommandRunnerParams(BuckConfig buckConfig, Cell cell)
+      throws InterruptedException, IOException {
     Supplier<AndroidPlatformTarget> androidPlatformTargetSupplier =
         AndroidPlatformTarget.EXPLODING_ANDROID_PLATFORM_TARGET_SUPPLIER;
     return CommandRunnerParams.builder()
         .setConsole(new TestConsole())
+        .setBuildInfoStoreManager(new BuildInfoStoreManager())
         .setStdIn(new ByteArrayInputStream("".getBytes("UTF-8")))
         .setCell(cell)
         .setAndroidPlatformTargetSupplier(androidPlatformTargetSupplier)
         .setArtifactCacheFactory(new SingletonArtifactCacheFactory(new NoopArtifactCache()))
         .setBuckEventBus(BuckEventBusFactory.newInstance())
+        .setTypeCoercerFactory(createMock(TypeCoercerFactory.class))
         .setParser(createMock(Parser.class))
         .setPlatform(Platform.detect())
         .setEnvironment(ImmutableMap.copyOf(System.getenv()))
@@ -171,17 +149,14 @@ public class CleanCommandTest extends EasyMockSupport {
         .setBuckConfig(buckConfig)
         .setFileHashCache(new StackedFileHashCache(ImmutableList.of()))
         .setExecutors(ImmutableMap.of())
-        .setBuildEnvironmentDescription(
-            CommandRunnerParamsForTesting.BUILD_ENVIRONMENT_DESCRIPTION)
+        .setBuildEnvironmentDescription(CommandRunnerParamsForTesting.BUILD_ENVIRONMENT_DESCRIPTION)
         .setVersionControlStatsGenerator(
             new VersionControlStatsGenerator(new NoOpCmdLineInterface(), Optional.empty()))
         .setVersionedTargetGraphCache(new VersionedTargetGraphCache())
         .setActionGraphCache(new ActionGraphCache(new BroadcastEventListener()))
         .setKnownBuildRuleTypesFactory(
             new KnownBuildRuleTypesFactory(
-                new FakeProcessExecutor(),
-                new FakeAndroidDirectoryResolver()))
+                new FakeProcessExecutor(), new FakeAndroidDirectoryResolver()))
         .build();
   }
-
 }

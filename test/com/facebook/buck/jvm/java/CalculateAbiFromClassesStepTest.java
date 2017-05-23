@@ -17,6 +17,7 @@
 package com.facebook.buck.jvm.java;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 
 import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.rules.FakeBuildableContext;
@@ -25,21 +26,21 @@ import com.facebook.buck.step.TestExecutionContext;
 import com.facebook.buck.testutil.integration.TemporaryPaths;
 import com.facebook.buck.testutil.integration.TestDataHelper;
 import com.facebook.buck.testutil.integration.ZipInspector;
-
-import org.junit.Rule;
-import org.junit.Test;
-
+import com.facebook.buck.zip.CustomJarOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.jar.JarFile;
+import java.util.jar.Manifest;
+import org.junit.Rule;
+import org.junit.Test;
 
 public class CalculateAbiFromClassesStepTest {
-  @Rule
-  public TemporaryPaths temp = new TemporaryPaths();
+  @Rule public TemporaryPaths temp = new TemporaryPaths();
 
   @Test
-  public void shouldCalculateAbiFromAStubJar() throws IOException {
+  public void shouldCalculateAbiFromAStubJar() throws InterruptedException, IOException {
     Path outDir = temp.newFolder().toAbsolutePath();
     ProjectFilesystem filesystem = new ProjectFilesystem(outDir);
 
@@ -53,7 +54,8 @@ public class CalculateAbiFromClassesStepTest {
     ExecutionContext executionContext = TestExecutionContext.newInstance();
 
     FakeBuildableContext context = new FakeBuildableContext();
-    new CalculateAbiFromClassesStep(context, filesystem, binJar, abiJar).execute(executionContext);
+    new CalculateAbiFromClassesStep(context, filesystem, binJar, abiJar, false)
+        .execute(executionContext);
 
     String seenHash = filesystem.computeSha1(Paths.get("abi.jar")).getHash();
 
@@ -63,10 +65,18 @@ public class CalculateAbiFromClassesStepTest {
     // investigate why the value is different.
     // NOTE: If this starts failing on CI for no obvious reason it's possible that the offset
     // calculation in ZipConstants.getFakeTime() does not account for DST correctly.
-    assertEquals("52a5db02b73cfc816bd5180d98dd99997f97622d", seenHash);
+    assertEquals("0c9f10973f534551034ca584d29fc0b90ae088e8", seenHash);
 
     // Assert that the abiJar contains non-class resources (like txt files).
     ZipInspector inspector = new ZipInspector(abiJar);
     inspector.assertFileExists("LICENSE.txt");
+
+    try (JarFile jarFile = new JarFile(abiJar.toFile())) {
+      Manifest manifest = jarFile.getManifest();
+      assertNotNull(
+          manifest
+              .getAttributes("junit/runner/BaseTestRunner.class")
+              .getValue(CustomJarOutputStream.DIGEST_ATTRIBUTE_NAME));
+    }
   }
 }

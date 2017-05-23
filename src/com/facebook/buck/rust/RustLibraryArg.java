@@ -27,13 +27,10 @@ import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
-
 import java.nio.file.Path;
 
-/**
- * Generate linker command line for Rust library when used as a dependency.
- */
-public class RustLibraryArg extends Arg implements HasSourcePath {
+/** Generate linker command line for Rust library when used as a dependency. */
+public class RustLibraryArg implements Arg, HasSourcePath {
   private final SourcePathResolver resolver;
   private final String crate;
   private final ImmutableSortedSet<BuildRule> deps;
@@ -70,13 +67,15 @@ public class RustLibraryArg extends Arg implements HasSourcePath {
 
   @Override
   public void appendToCommandLine(
-      ImmutableCollection.Builder<String> builder,
-      SourcePathResolver pathResolver) {
+      ImmutableCollection.Builder<String> builder, SourcePathResolver pathResolver) {
     Path path = resolver.getRelativePath(rlib);
+
+    // NOTE: each of these logical args must be put on the command line as a single parameter
+    // (otherwise dedup might just remove one piece of it)
     if (direct) {
-      builder.add("--extern", String.format("%s=%s", crate, path));
+      builder.add(String.format("--extern=%s=%s", crate, path));
     } else {
-      builder.add("-L", String.format("dependency=%s", path.getParent()));
+      builder.add(String.format("-Ldependency=%s", path.getParent()));
     }
   }
 
@@ -109,7 +108,6 @@ public class RustLibraryArg extends Arg implements HasSourcePath {
       return false;
     }
     return rlib.equals(that.rlib);
-
   }
 
   @Override

@@ -22,10 +22,8 @@ import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.util.TreePathScanner;
 import com.sun.source.util.Trees;
-
 import java.util.ArrayDeque;
 import java.util.Deque;
-
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.TypeParameterElement;
@@ -33,8 +31,8 @@ import javax.lang.model.element.VariableElement;
 import javax.lang.model.util.ElementScanner8;
 
 /**
- * Creates {@link TreeBackedElement}s for each element in the {@link CompilationUnitTree}s known
- * to the compiler. This is analogous to the "Enter" phase of javac.
+ * Creates {@link TreeBackedElement}s for each element in the {@link CompilationUnitTree}s known to
+ * the compiler. This is analogous to the "Enter" phase of javac.
  */
 class TreeBackedEnter {
   private static final BuckTracing BUCK_TRACING = BuckTracing.getInstance("TreeBackedEnter");
@@ -49,14 +47,19 @@ class TreeBackedEnter {
   }
 
   public void enter(CompilationUnitTree compilationUnit) {
-    try (BuckTracing.TraceSection t = BUCK_TRACING.traceSection("enter")) {
+    try (BuckTracing.TraceSection t = BUCK_TRACING.traceSection("buck.enter")) {
       treeScanner.scan(compilationUnit, null);
     }
   }
 
+  // TODO(jkeljo): Consider continuing to build TreePath objects as we go, so that we don't have to
+  // re-query the tree when creating the elements in `TreeBackedElements`.
   private class EnteringTreePathScanner extends TreePathScanner<Void, Void> {
     @Override
     public Void visitClass(ClassTree node, Void v) {
+      // We use a TreePathScanner to find the top-level type elements in a given compilation unit,
+      // then switch to Element scanning so that we can catch elements created by the compiler
+      // that don't have a tree, such as default constructors or the generated methods on enums.
       return elementScanner.scan(
           Preconditions.checkNotNull(javacTrees.getElement(getCurrentPath())));
     }
@@ -71,8 +74,7 @@ class TreeBackedEnter {
 
     @Override
     public Void visitType(TypeElement e, Void v) {
-      TreeBackedTypeElement newClass =
-          (TreeBackedTypeElement) elements.enterElement(e);
+      TreeBackedTypeElement newClass = (TreeBackedTypeElement) elements.enterElement(e);
       try (ElementContext c = new ElementContext(newClass)) {
         super.visitType(e, v);
         super.scan(e.getTypeParameters(), v);
@@ -96,8 +98,7 @@ class TreeBackedEnter {
 
     @Override
     public Void visitExecutable(ExecutableElement e, Void v) {
-      TreeBackedExecutableElement method =
-          (TreeBackedExecutableElement) elements.enterElement(e);
+      TreeBackedExecutableElement method = (TreeBackedExecutableElement) elements.enterElement(e);
 
       try (ElementContext c = new ElementContext(method)) {
         super.visitExecutable(e, v);

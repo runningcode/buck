@@ -32,10 +32,8 @@ import com.facebook.buck.rules.SourcePathRuleFinder;
 import com.facebook.buck.rules.TargetGraph;
 import com.facebook.buck.rules.TestCellBuilder;
 import com.google.common.collect.ImmutableSortedSet;
-
-import org.junit.Test;
-
 import java.nio.file.Paths;
+import org.junit.Test;
 
 public class AndroidManifestDescriptionTest {
 
@@ -44,36 +42,35 @@ public class AndroidManifestDescriptionTest {
     BuildRuleResolver buildRuleResolver =
         new BuildRuleResolver(TargetGraph.EMPTY, new DefaultTargetNodeToBuildRuleTransformer());
 
-    BuildRule ruleWithOutput = new FakeBuildRule(
-        BuildTargetFactory.newInstance("//foo:bar"),
-        new SourcePathResolver(new SourcePathRuleFinder(buildRuleResolver))) {
-      @Override
-      public SourcePath getSourcePathToOutput() {
-        return new ExplicitBuildTargetSourcePath(
-            getBuildTarget(),
-            Paths.get("buck-out/gen/foo/bar/AndroidManifest.xml"));
-      }
-    };
+    BuildRule ruleWithOutput =
+        new FakeBuildRule(
+            BuildTargetFactory.newInstance("//foo:bar"),
+            new SourcePathResolver(new SourcePathRuleFinder(buildRuleResolver))) {
+          @Override
+          public SourcePath getSourcePathToOutput() {
+            return new ExplicitBuildTargetSourcePath(
+                getBuildTarget(), Paths.get("buck-out/gen/foo/bar/AndroidManifest.xml"));
+          }
+        };
     SourcePath skeleton = ruleWithOutput.getSourcePathToOutput();
     buildRuleResolver.addToIndex(ruleWithOutput);
 
-    AndroidManifestDescription.Arg arg = new AndroidManifestDescription.Arg();
-    arg.skeleton = skeleton;
-    arg.deps = ImmutableSortedSet.of();
+    AndroidManifestDescriptionArg arg =
+        AndroidManifestDescriptionArg.builder().setName("baz").setSkeleton(skeleton).build();
 
-    BuildRuleParams params = new FakeBuildRuleParamsBuilder("//foo:baz")
-        .setDeclaredDeps(buildRuleResolver.getAllRules(arg.deps))
-        .build();
-    BuildRule androidManifest = new AndroidManifestDescription()
-        .createBuildRule(
-            TargetGraph.EMPTY,
-            params,
-            buildRuleResolver,
-            TestCellBuilder.createCellRoots(params.getProjectFilesystem()),
-            arg);
+    BuildRuleParams params =
+        new FakeBuildRuleParamsBuilder("//foo:baz")
+            .setDeclaredDeps(buildRuleResolver.getAllRules(arg.getDeps()))
+            .build();
+    BuildRule androidManifest =
+        new AndroidManifestDescription()
+            .createBuildRule(
+                TargetGraph.EMPTY,
+                params,
+                buildRuleResolver,
+                TestCellBuilder.createCellRoots(params.getProjectFilesystem()),
+                arg);
 
-    assertEquals(
-        ImmutableSortedSet.of(ruleWithOutput),
-        androidManifest.getBuildDeps());
+    assertEquals(ImmutableSortedSet.of(ruleWithOutput), androidManifest.getBuildDeps());
   }
 }

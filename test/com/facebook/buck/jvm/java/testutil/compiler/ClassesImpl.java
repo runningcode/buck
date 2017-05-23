@@ -17,13 +17,9 @@
 package com.facebook.buck.jvm.java.testutil.compiler;
 
 import com.facebook.buck.io.MorePaths;
-import com.facebook.buck.zip.CustomJarOutputStream;
-import com.facebook.buck.zip.ZipOutputStreams;
-
-import org.junit.rules.TemporaryFolder;
-import org.objectweb.asm.ClassReader;
-import org.objectweb.asm.ClassVisitor;
-
+import com.facebook.buck.zip.CustomZipEntry;
+import com.facebook.buck.zip.JarBuilder;
+import com.facebook.buck.zip.JarEntrySupplier;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -31,6 +27,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.junit.rules.TemporaryFolder;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
 
 class ClassesImpl implements Classes {
   private final TemporaryFolder root;
@@ -40,10 +39,8 @@ class ClassesImpl implements Classes {
   }
 
   @Override
-  public void acceptClassVisitor(
-      String qualifiedName,
-      int flags,
-      ClassVisitor cv) throws IOException {
+  public void acceptClassVisitor(String qualifiedName, int flags, ClassVisitor cv)
+      throws IOException {
     Path classFilePath = resolveClassFilePath(qualifiedName);
 
     try (InputStream stream = Files.newInputStream(classFilePath)) {
@@ -55,25 +52,29 @@ class ClassesImpl implements Classes {
 
   @Override
   public void createJar(Path jarPath, boolean hashEntries) throws IOException {
-    try (CustomJarOutputStream jar =
-             ZipOutputStreams.newJarOutputStream(Files.newOutputStream(jarPath))) {
-      jar.setEntryHashingEnabled(hashEntries);
-      List<Path> files = Files.walk(root.getRoot().toPath())
-          .filter(path -> path.toFile().isFile())
-          .collect(Collectors.toList());
+    JarBuilder jarBuilder = new JarBuilder().setShouldHashEntries(hashEntries);
 
-      for (Path file : files) {
-        try (InputStream inputStream = Files.newInputStream(file)) {
-          jar.writeEntry(
-              MorePaths.pathWithUnixSeparators(root.getRoot().toPath().relativize(file)),
-              inputStream);
-        }
-      }
+    List<Path> files =
+        Files.walk(root.getRoot().toPath())
+            .filter(path -> path.toFile().isFile())
+            .sorted()
+            .collect(Collectors.toList());
+
+    for (Path file : files) {
+      jarBuilder.addEntry(
+          new JarEntrySupplier(
+              new CustomZipEntry(
+                  MorePaths.pathWithUnixSeparators(root.getRoot().toPath().relativize(file))),
+              "test",
+              () -> Files.newInputStream(file)));
     }
+
+    jarBuilder.createJarFile(jarPath);
   }
 
   private Path resolveClassFilePath(String qualifiedName) {
-    return root.getRoot().toPath().resolve(
-        qualifiedName.replace('.', File.separatorChar) + ".class");
+    return root.getRoot()
+        .toPath()
+        .resolve(qualifiedName.replace('.', File.separatorChar) + ".class");
   }
 }

@@ -16,16 +16,13 @@
 
 package com.facebook.buck.util.versioncontrol;
 
-import com.facebook.buck.model.Pair;
-import com.facebook.buck.util.MoreCollectors;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 
 public class FakeVersionControlCmdLineInterface extends NoOpCmdLineInterface {
 
-  private final VersionControlStats versionControlStats;
+  private final FullVersionControlStats versionControlStats;
 
-  public FakeVersionControlCmdLineInterface(VersionControlStats versionControlStats) {
+  public FakeVersionControlCmdLineInterface(FullVersionControlStats versionControlStats) {
     this.versionControlStats = versionControlStats;
   }
 
@@ -35,37 +32,14 @@ public class FakeVersionControlCmdLineInterface extends NoOpCmdLineInterface {
   }
 
   @Override
-  public String revisionId(String name)
-      throws VersionControlCommandFailedException, InterruptedException {
-    return versionControlStats.getCurrentRevisionId();
-  }
-
-  @Override
   public String currentRevisionId()
       throws VersionControlCommandFailedException, InterruptedException {
     return versionControlStats.getCurrentRevisionId();
   }
 
   @Override
-  public String commonAncestor(
-      String revisionIdOne,
-      String revisionIdTwo) throws VersionControlCommandFailedException, InterruptedException {
-    return versionControlStats.getBranchedFromMasterRevisionId();
-  }
-
-  @Override
-  public Pair<String, Long> commonAncestorAndTS(
-      String revisionIdOne,
-      String revisionIdTwo) throws VersionControlCommandFailedException, InterruptedException {
-    return new Pair<>(
-        versionControlStats.getBranchedFromMasterRevisionId(),
-        versionControlStats.getBranchedFromMasterTS());
-  }
-
-  @Override
-  public String diffBetweenRevisions(
-      String baseRevision,
-      String tipRevision) throws VersionControlCommandFailedException, InterruptedException {
+  public String diffBetweenRevisions(String baseRevision, String tipRevision)
+      throws VersionControlCommandFailedException, InterruptedException {
     if (!versionControlStats.getDiff().isPresent()) {
       throw new VersionControlCommandFailedException("");
     }
@@ -79,12 +53,12 @@ public class FakeVersionControlCmdLineInterface extends NoOpCmdLineInterface {
   }
 
   @Override
-  public ImmutableMap<String, String> bookmarksRevisionsId(ImmutableSet<String> bookmarks)
+  public FastVersionControlStats fastVersionControlStats()
       throws InterruptedException, VersionControlCommandFailedException {
-    return versionControlStats.getBaseBookmarks().stream()
-        .collect(
-            MoreCollectors.toImmutableMap(
-                x -> x,
-                x -> versionControlStats.getBranchedFromMasterRevisionId()));
+    return FastVersionControlStats.of(
+        versionControlStats.getCurrentRevisionId(),
+        versionControlStats.getBaseBookmarks(),
+        versionControlStats.getBranchedFromMasterRevisionId(),
+        versionControlStats.getBranchedFromMasterTS());
   }
 }

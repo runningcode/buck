@@ -16,6 +16,7 @@
 
 package com.facebook.buck.cxx;
 
+import com.facebook.buck.android.AndroidBuckConfig;
 import com.facebook.buck.android.DefaultAndroidDirectoryResolver;
 import com.facebook.buck.android.NdkCxxPlatform;
 import com.facebook.buck.android.NdkCxxPlatformCompiler;
@@ -33,13 +34,6 @@ import com.facebook.buck.testutil.integration.TestDataHelper;
 import com.facebook.buck.util.environment.Platform;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
-
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -47,13 +41,17 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
 @RunWith(Parameterized.class)
 public class CxxSharedLibraryInterfaceIntegrationTest {
 
-  private static Optional<ImmutableList<Flavor>> getNdkPlatforms() {
-    ProjectFilesystem filesystem =
-        new ProjectFilesystem(Paths.get(".").toAbsolutePath());
+  private static Optional<ImmutableList<Flavor>> getNdkPlatforms() throws InterruptedException {
+    ProjectFilesystem filesystem = new ProjectFilesystem(Paths.get(".").toAbsolutePath());
     DefaultAndroidDirectoryResolver resolver =
         new DefaultAndroidDirectoryResolver(
             filesystem.getRootPath().getFileSystem(),
@@ -79,6 +77,7 @@ public class CxxSharedLibraryInterfaceIntegrationTest {
     ImmutableMap<NdkCxxPlatforms.TargetCpuType, NdkCxxPlatform> ndkPlatforms =
         NdkCxxPlatforms.getPlatforms(
             new CxxBuckConfig(FakeBuckConfig.builder().build()),
+            new AndroidBuckConfig(FakeBuckConfig.builder().build(), Platform.detect()),
             filesystem,
             ndkDir.get(),
             compiler,
@@ -93,7 +92,7 @@ public class CxxSharedLibraryInterfaceIntegrationTest {
   }
 
   @Parameterized.Parameters(name = "type={0},platform={1}")
-  public static Collection<Object[]> data() {
+  public static Collection<Object[]> data() throws InterruptedException {
     List<Flavor> platforms = new ArrayList<>();
 
     // Test the system platform.
@@ -106,20 +105,17 @@ public class CxxSharedLibraryInterfaceIntegrationTest {
     ndkPlatforms.ifPresent(platforms::addAll);
 
     return ParameterizedTests.getPermutations(
-        ImmutableList.of("cxx_library", "prebuilt_cxx_library"),
-        platforms);
+        ImmutableList.of("cxx_library", "prebuilt_cxx_library"), platforms);
   }
 
-  @Parameterized.Parameter
-  public String type;
+  @Parameterized.Parameter public String type;
 
   @Parameterized.Parameter(value = 1)
   public Flavor platform;
 
   private ProjectWorkspace workspace;
 
-  @Rule
-  public TemporaryPaths tmp = new TemporaryPaths();
+  @Rule public TemporaryPaths tmp = new TemporaryPaths();
 
   private BuildTarget sharedBinaryTarget;
   private BuildTarget sharedBinaryBuiltTarget;
@@ -133,19 +129,17 @@ public class CxxSharedLibraryInterfaceIntegrationTest {
         TestDataHelper.createProjectWorkspaceForScenario(this, "shared_library_interfaces", tmp);
     workspace.setUp();
     staticBinaryTarget =
-        BuildTargetFactory.newInstance("//:static_binary_" + type)
-            .withAppendedFlavors(platform);
+        BuildTargetFactory.newInstance("//:static_binary_" + type).withAppendedFlavors(platform);
     staticBinaryBuiltTarget =
         staticBinaryTarget.withAppendedFlavors(CxxDescriptionEnhancer.CXX_LINK_BINARY_FLAVOR);
     sharedBinaryTarget =
-        BuildTargetFactory.newInstance("//:shared_binary_" + type)
-            .withAppendedFlavors(platform);
+        BuildTargetFactory.newInstance("//:shared_binary_" + type).withAppendedFlavors(platform);
     sharedBinaryBuiltTarget =
         sharedBinaryTarget.withAppendedFlavors(CxxDescriptionEnhancer.CXX_LINK_BINARY_FLAVOR);
     sharedLibraryTarget =
-        !type.equals("cxx_library") ?
-            Optional.empty() :
-            Optional.of(
+        !type.equals("cxx_library")
+            ? Optional.empty()
+            : Optional.of(
                 CxxDescriptionEnhancer.createSharedLibraryBuildTarget(
                     BuildTargetFactory.newInstance("//:" + type),
                     platform,
@@ -160,9 +154,12 @@ public class CxxSharedLibraryInterfaceIntegrationTest {
     // non-interface change.
     ImmutableList<String> args =
         ImmutableList.of(
-            "-c", "cxx.shared_library_interfaces=false",
-            "-c", "cxx.objcopy=/usr/bin/objcopy",
-            "-c", "cxx.platform=" + platform,
+            "-c",
+            "cxx.shared_library_interfaces=false",
+            "-c",
+            "cxx.objcopy=/usr/bin/objcopy",
+            "-c",
+            "cxx.platform=" + platform,
             sharedBinaryTarget.getFullyQualifiedName());
     String[] argv = args.toArray(new String[args.size()]);
     workspace.runBuckBuild(argv).assertSuccess();
@@ -178,9 +175,12 @@ public class CxxSharedLibraryInterfaceIntegrationTest {
     // non-interface change.
     ImmutableList<String> iArgs =
         ImmutableList.of(
-            "-c", "cxx.shared_library_interfaces=true",
-            "-c", "cxx.objcopy=/usr/bin/objcopy",
-            "-c", "cxx.platform=" + platform,
+            "-c",
+            "cxx.shared_library_interfaces=true",
+            "-c",
+            "cxx.objcopy=/usr/bin/objcopy",
+            "-c",
+            "cxx.platform=" + platform,
             sharedBinaryTarget.getFullyQualifiedName());
     String[] iArgv = iArgs.toArray(new String[iArgs.size()]);
     workspace.runBuckBuild(iArgv).assertSuccess();
@@ -201,9 +201,12 @@ public class CxxSharedLibraryInterfaceIntegrationTest {
     // non-interface change.
     ImmutableList<String> args =
         ImmutableList.of(
-            "-c", "cxx.shared_library_interfaces=false",
-            "-c", "cxx.objcopy=/usr/bin/objcopy",
-            "-c", "cxx.platform=" + platform,
+            "-c",
+            "cxx.shared_library_interfaces=false",
+            "-c",
+            "cxx.objcopy=/usr/bin/objcopy",
+            "-c",
+            "cxx.platform=" + platform,
             sharedBinaryTarget.getFullyQualifiedName());
     String[] argv = args.toArray(new String[args.size()]);
     workspace.runBuckBuild(argv).assertSuccess();
@@ -219,9 +222,12 @@ public class CxxSharedLibraryInterfaceIntegrationTest {
     // non-interface change.
     ImmutableList<String> iArgs =
         ImmutableList.of(
-            "-c", "cxx.shared_library_interfaces=true",
-            "-c", "cxx.objcopy=/usr/bin/objcopy",
-            "-c", "cxx.platform=" + platform,
+            "-c",
+            "cxx.shared_library_interfaces=true",
+            "-c",
+            "cxx.objcopy=/usr/bin/objcopy",
+            "-c",
+            "cxx.platform=" + platform,
             sharedBinaryTarget.getFullyQualifiedName());
     String[] iArgv = iArgs.toArray(new String[iArgs.size()]);
     workspace.runBuckBuild(iArgv).assertSuccess();
@@ -242,9 +248,12 @@ public class CxxSharedLibraryInterfaceIntegrationTest {
     // non-interface change.
     ImmutableList<String> args =
         ImmutableList.of(
-            "-c", "cxx.shared_library_interfaces=false",
-            "-c", "cxx.objcopy=/usr/bin/objcopy",
-            "-c", "cxx.platform=" + platform,
+            "-c",
+            "cxx.shared_library_interfaces=false",
+            "-c",
+            "cxx.objcopy=/usr/bin/objcopy",
+            "-c",
+            "cxx.platform=" + platform,
             sharedBinaryTarget.getFullyQualifiedName());
     String[] argv = args.toArray(new String[args.size()]);
     workspace.runBuckBuild(argv).assertSuccess();
@@ -263,9 +272,12 @@ public class CxxSharedLibraryInterfaceIntegrationTest {
     // non-interface change.
     ImmutableList<String> iArgs =
         ImmutableList.of(
-            "-c", "cxx.shared_library_interfaces=true",
-            "-c", "cxx.objcopy=/usr/bin/objcopy",
-            "-c", "cxx.platform=" + platform,
+            "-c",
+            "cxx.shared_library_interfaces=true",
+            "-c",
+            "cxx.objcopy=/usr/bin/objcopy",
+            "-c",
+            "cxx.platform=" + platform,
             sharedBinaryTarget.getFullyQualifiedName());
     String[] iArgv = iArgs.toArray(new String[iArgs.size()]);
     workspace.runBuckBuild(iArgv).assertSuccess();
@@ -282,9 +294,12 @@ public class CxxSharedLibraryInterfaceIntegrationTest {
   public void sharedInterfaceLibraryDoesRebuildAfterInterfaceChange() throws IOException {
     ImmutableList<String> args =
         ImmutableList.of(
-            "-c", "cxx.shared_library_interfaces=true",
-            "-c", "cxx.objcopy=/usr/bin/objcopy",
-            "-c", "cxx.platform=" + platform,
+            "-c",
+            "cxx.shared_library_interfaces=true",
+            "-c",
+            "cxx.objcopy=/usr/bin/objcopy",
+            "-c",
+            "cxx.platform=" + platform,
             sharedBinaryTarget.getFullyQualifiedName());
     String[] argv = args.toArray(new String[args.size()]);
     workspace.runBuckBuild(argv).assertSuccess();
@@ -299,9 +314,12 @@ public class CxxSharedLibraryInterfaceIntegrationTest {
     // Verify that using shared library interfaces does not affect static linking.
     ImmutableList<String> iArgs =
         ImmutableList.of(
-            "-c", "cxx.shared_library_interfaces=true",
-            "-c", "cxx.objcopy=/usr/bin/objcopy",
-            "-c", "cxx.platform=" + platform,
+            "-c",
+            "cxx.shared_library_interfaces=true",
+            "-c",
+            "cxx.objcopy=/usr/bin/objcopy",
+            "-c",
+            "cxx.platform=" + platform,
             staticBinaryTarget.getFullyQualifiedName());
     String[] iArgv = iArgs.toArray(new String[iArgs.size()]);
     workspace.runBuckBuild(iArgv).assertSuccess();
@@ -310,5 +328,4 @@ public class CxxSharedLibraryInterfaceIntegrationTest {
     log = workspace.getBuildLog();
     log.assertTargetBuiltLocally(staticBinaryBuiltTarget.toString());
   }
-
 }

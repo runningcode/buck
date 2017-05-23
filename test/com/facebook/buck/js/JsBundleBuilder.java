@@ -23,10 +23,9 @@ import com.facebook.buck.rules.AbstractNodeBuilder;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
 
-import java.util.Optional;
-
-public class JsBundleBuilder extends
-    AbstractNodeBuilder<JsBundleDescription.Arg, JsBundleDescription, JsBundle> {
+public class JsBundleBuilder
+    extends AbstractNodeBuilder<
+        JsBundleDescriptionArg.Builder, JsBundleDescriptionArg, JsBundleDescription, JsBundle> {
   private static final JsBundleDescription bundleDescription = new JsBundleDescription();
 
   JsBundleBuilder(
@@ -35,24 +34,18 @@ public class JsBundleBuilder extends
       Either<ImmutableSet<String>, String> entry,
       ProjectFilesystem filesystem) {
     super(bundleDescription, target, filesystem);
-    arg.entry = entry;
-    arg.bundleName = Optional.empty();
-    arg.worker = worker;
-    arg.rDotJavaPackage = Optional.of("com.example");
+    getArgForPopulating().setEntry(entry);
+    getArgForPopulating().setWorker(worker);
+    getArgForPopulating().setAndroidPackage("com.example");
   }
 
   JsBundleBuilder setBundleName(String bundleName) {
-    arg.bundleName = Optional.of(bundleName);
+    getArgForPopulating().setBundleName(bundleName);
     return this;
   }
 
   JsBundleBuilder setDeps(ImmutableSortedSet<BuildTarget> deps) {
-    arg.deps = deps;
-    return this;
-  }
-
-  JsBundleBuilder setLibs(ImmutableSortedSet<BuildTarget> libs) {
-    arg.libs = libs;
+    getArgForPopulating().setDeps(deps);
     return this;
   }
 }

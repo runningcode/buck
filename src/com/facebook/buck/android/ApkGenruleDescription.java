@@ -23,35 +23,35 @@ import com.facebook.buck.rules.BuildRuleResolver;
 import com.facebook.buck.rules.SourcePathRuleFinder;
 import com.facebook.buck.shell.AbstractGenruleDescription;
 import com.facebook.buck.util.HumanReadableException;
-import com.facebook.infer.annotation.SuppressFieldNotInitialized;
+import com.facebook.buck.util.immutables.BuckStyleImmutable;
 import com.google.common.base.Supplier;
 import com.google.common.base.Suppliers;
 import com.google.common.collect.ImmutableSortedSet;
-
 import java.util.Optional;
+import org.immutables.value.Value;
 
-public class ApkGenruleDescription extends AbstractGenruleDescription<ApkGenruleDescription.Arg> {
+public class ApkGenruleDescription extends AbstractGenruleDescription<ApkGenruleDescriptionArg> {
 
   @Override
-  public Arg createUnpopulatedConstructorArg() {
-    return new Arg();
+  public Class<ApkGenruleDescriptionArg> getConstructorArgType() {
+    return ApkGenruleDescriptionArg.class;
   }
 
   @Override
-  protected <A extends ApkGenruleDescription.Arg> BuildRule createBuildRule(
+  protected BuildRule createBuildRule(
       BuildRuleParams params,
       BuildRuleResolver resolver,
-      A args,
+      ApkGenruleDescriptionArg args,
       Optional<com.facebook.buck.rules.args.Arg> cmd,
       Optional<com.facebook.buck.rules.args.Arg> bash,
       Optional<com.facebook.buck.rules.args.Arg> cmdExe) {
 
-    final BuildRule apk = resolver.getRule(args.apk);
+    final BuildRule apk = resolver.getRule(args.getApk());
     if (!(apk instanceof HasInstallableApk)) {
-      throw new HumanReadableException("The 'apk' argument of %s, %s, must correspond to an " +
-          "installable rule, such as android_binary() or apk_genrule().",
-          params.getBuildTarget(),
-          args.apk.getFullyQualifiedName());
+      throw new HumanReadableException(
+          "The 'apk' argument of %s, %s, must correspond to an "
+              + "installable rule, such as android_binary() or apk_genrule().",
+          params.getBuildTarget(), args.getApk().getFullyQualifiedName());
     }
     HasInstallableApk installableApk = (HasInstallableApk) apk;
 
@@ -61,22 +61,28 @@ public class ApkGenruleDescription extends AbstractGenruleDescription<ApkGenrule
     return new ApkGenrule(
         params.copyReplacingExtraDeps(
             Suppliers.memoize(
-                () -> ImmutableSortedSet.<BuildRule>naturalOrder()
-                    .addAll(originalExtraDeps.get())
-                    .add(installableApk)
-                    .build())),
+                () ->
+                    ImmutableSortedSet.<BuildRule>naturalOrder()
+                        .addAll(originalExtraDeps.get())
+                        .add(installableApk)
+                        .build())),
         ruleFinder,
-        args.srcs,
+        args.getSrcs(),
         cmd,
         bash,
         cmdExe,
-        args.type.isPresent() ? args.type : Optional.of("apk"),
+        args.getType(),
         installableApk.getSourcePathToOutput());
   }
 
-  @SuppressFieldNotInitialized
-  public static class Arg extends AbstractGenruleDescription.Arg {
-    public BuildTarget apk;
-  }
+  @BuckStyleImmutable
+  @Value.Immutable
+  interface AbstractApkGenruleDescriptionArg extends AbstractGenruleDescription.CommonArg {
+    BuildTarget getApk();
 
+    @Override
+    default Optional<String> getType() {
+      return Optional.of("apk");
+    }
+  }
 }

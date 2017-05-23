@@ -19,8 +19,6 @@ package com.facebook.buck.jvm.java.abi.source;
 import com.facebook.buck.util.liteinfersupport.Nullable;
 import com.sun.source.tree.ModifiersTree;
 import com.sun.source.tree.VariableTree;
-import com.sun.source.util.TreePath;
-
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ElementVisitor;
 import javax.lang.model.element.VariableElement;
@@ -29,25 +27,29 @@ import javax.lang.model.type.TypeMirror;
 class TreeBackedVariableElement extends TreeBackedElement implements VariableElement {
   private final VariableElement underlyingElement;
 
-  @Nullable
-  private final VariableTree tree;
+  @Nullable private final VariableTree tree;
 
-  @Nullable
-  private TypeMirror type;
+  @Nullable private TypeMirror type;
 
   TreeBackedVariableElement(
       VariableElement underlyingElement,
       TreeBackedElement enclosingElement,
-      @Nullable TreePath path,
+      @Nullable VariableTree tree,
       TreeBackedElementResolver resolver) {
-    super(underlyingElement, enclosingElement, path, resolver);
+    super(underlyingElement, enclosingElement, tree, resolver);
     this.underlyingElement = underlyingElement;
-    tree = path != null ? (VariableTree) path.getLeaf() : null;
+    this.tree = tree;
     if (underlyingElement.getKind() == ElementKind.PARAMETER) {
       ((TreeBackedExecutableElement) enclosingElement).addParameter(this);
     } else {
       enclosingElement.addEnclosedElement(this);
     }
+  }
+
+  @Override
+  @Nullable
+  VariableTree getTree() {
+    return tree;
   }
 
   @Override

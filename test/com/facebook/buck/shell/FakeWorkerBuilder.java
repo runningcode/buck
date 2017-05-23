@@ -23,6 +23,7 @@ import com.facebook.buck.rules.BuildRule;
 import com.facebook.buck.rules.BuildRuleParams;
 import com.facebook.buck.rules.BuildRuleResolver;
 import com.facebook.buck.rules.CellPathResolver;
+import com.facebook.buck.rules.CommonDescriptionArg;
 import com.facebook.buck.rules.Description;
 import com.facebook.buck.rules.NoopBuildRule;
 import com.facebook.buck.rules.RuleKeyObjectSink;
@@ -31,25 +32,26 @@ import com.facebook.buck.rules.SourcePathResolver;
 import com.facebook.buck.rules.SourcePathRuleFinder;
 import com.facebook.buck.rules.TargetGraph;
 import com.facebook.buck.rules.Tool;
+import com.facebook.buck.util.immutables.BuckStyleImmutable;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.hash.HashCode;
-
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.function.Function;
+import org.immutables.value.Value;
 
-public class FakeWorkerBuilder extends AbstractNodeBuilder<
-    Object, FakeWorkerBuilder.FakeWorkerDescription, FakeWorkerBuilder.FakeWorkerTool> {
+public class FakeWorkerBuilder
+    extends AbstractNodeBuilder<
+        FakeWorkerDescriptionArg.Builder, FakeWorkerDescriptionArg,
+        FakeWorkerBuilder.FakeWorkerDescription, FakeWorkerBuilder.FakeWorkerTool> {
 
   public FakeWorkerBuilder(BuildTarget target) {
     this(target, FakeWorkerTool::new);
   }
 
-  public FakeWorkerBuilder(
-      BuildTarget target,
-      Function<BuildRuleParams, BuildRule> create) {
+  public FakeWorkerBuilder(BuildTarget target, Function<BuildRuleParams, BuildRule> create) {
     super(new FakeWorkerDescription(create), target);
   }
 
@@ -60,6 +62,7 @@ public class FakeWorkerBuilder extends AbstractNodeBuilder<
     public FakeWorkerTool(BuildRuleParams params) {
       super(params);
     }
+
     @Override
     public Tool getTool() {
       return tool;
@@ -89,7 +92,6 @@ public class FakeWorkerBuilder extends AbstractNodeBuilder<
     public HashCode getInstanceKey() {
       return hashCode;
     }
-
   }
 
   private static class FakeTool implements Tool {
@@ -119,7 +121,7 @@ public class FakeWorkerBuilder extends AbstractNodeBuilder<
     }
   }
 
-  public static class FakeWorkerDescription implements Description<Object> {
+  public static class FakeWorkerDescription implements Description<FakeWorkerDescriptionArg> {
     private final Function<BuildRuleParams, BuildRule> create;
 
     private FakeWorkerDescription(Function<BuildRuleParams, BuildRule> create) {
@@ -127,20 +129,23 @@ public class FakeWorkerBuilder extends AbstractNodeBuilder<
     }
 
     @Override
-    public Object createUnpopulatedConstructorArg() {
-      return new Object();
+    public Class<FakeWorkerDescriptionArg> getConstructorArgType() {
+      return FakeWorkerDescriptionArg.class;
     }
 
     @Override
-    public <A> BuildRule createBuildRule(
+    public BuildRule createBuildRule(
         TargetGraph targetGraph,
         BuildRuleParams params,
         BuildRuleResolver resolver,
         CellPathResolver cellRoots,
-        A args) throws NoSuchBuildTargetException {
+        FakeWorkerDescriptionArg args)
+        throws NoSuchBuildTargetException {
       return create.apply(params);
     }
+
+    @BuckStyleImmutable
+    @Value.Immutable
+    interface AbstractFakeWorkerDescriptionArg extends CommonDescriptionArg {}
   }
 }
-
-

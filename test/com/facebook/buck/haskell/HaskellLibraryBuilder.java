@@ -28,21 +28,17 @@ import com.facebook.buck.rules.coercer.SourceList;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSortedSet;
 
-import java.util.Optional;
-
-public class HaskellLibraryBuilder extends AbstractNodeBuilder<
-    HaskellLibraryDescription.Arg,
-    HaskellLibraryDescription,
-    HaskellLibrary> {
+public class HaskellLibraryBuilder
+    extends AbstractNodeBuilder<
+        HaskellLibraryDescriptionArg.Builder, HaskellLibraryDescriptionArg,
+        HaskellLibraryDescription, HaskellLibrary> {
 
   public HaskellLibraryBuilder(
       BuildTarget target,
       HaskellConfig haskellConfig,
       CxxBuckConfig cxxBuckConfig,
       FlavorDomain<CxxPlatform> cxxPlatforms) {
-    super(
-        new HaskellLibraryDescription(haskellConfig, cxxBuckConfig, cxxPlatforms),
-        target);
+    super(new HaskellLibraryDescription(haskellConfig, cxxBuckConfig, cxxPlatforms), target);
   }
 
   public HaskellLibraryBuilder(BuildTarget target) {
@@ -54,34 +50,33 @@ public class HaskellLibraryBuilder extends AbstractNodeBuilder<
   }
 
   public HaskellLibraryBuilder setSrcs(SourceList srcs) {
-    arg.srcs = srcs;
+    getArgForPopulating().setSrcs(srcs);
     return this;
   }
 
   public HaskellLibraryBuilder setCompilerFlags(ImmutableList<String> flags) {
-    arg.compilerFlags = flags;
+    getArgForPopulating().setCompilerFlags(flags);
     return this;
   }
 
   public HaskellLibraryBuilder setLinkWhole(boolean linkWhole) {
-    arg.linkWhole = Optional.of(linkWhole);
+    getArgForPopulating().setLinkWhole(linkWhole);
     return this;
   }
 
   public HaskellLibraryBuilder setPreferredLinkage(NativeLinkable.Linkage preferredLinkage) {
-    arg.preferredLinkage = Optional.of(preferredLinkage);
+    getArgForPopulating().setPreferredLinkage(preferredLinkage);
     return this;
   }
 
   public HaskellLibraryBuilder setDeps(ImmutableSortedSet<BuildTarget> deps) {
-    arg.deps = deps;
+    getArgForPopulating().setDeps(deps);
     return this;
   }
 
   public HaskellLibraryBuilder setPlatformDeps(
       PatternMatchedCollection<ImmutableSortedSet<BuildTarget>> platformDeps) {
-    arg.platformDeps = platformDeps;
+    getArgForPopulating().setPlatformDeps(platformDeps);
     return this;
   }
-
 }

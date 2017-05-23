@@ -21,15 +21,10 @@ import com.facebook.buck.model.BuildTarget;
 import com.facebook.buck.util.immutables.BuckStyleImmutable;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSet;
-
+import java.nio.file.Path;
 import org.immutables.value.Value;
 
-import java.nio.file.Path;
-import java.util.Optional;
-
-/**
- * Represents a prebuilt library (.jar or .aar) as seen by IntelliJ.
- */
+/** Represents a prebuilt library (.jar or .aar) as seen by IntelliJ. */
 @Value.Immutable
 @BuckStyleImmutable
 abstract class AbstractIjLibrary implements IjProjectElement {
@@ -39,35 +34,26 @@ abstract class AbstractIjLibrary implements IjProjectElement {
   @Override
   public abstract ImmutableSet<BuildTarget> getTargets();
 
-  /**
-   * @return path to the binary (.jar or .aar) the library represents.
-   */
-  public abstract Optional<Path> getBinaryJar();
+  /** @return path to the binary (.jar or .aar) the library represents. */
+  public abstract ImmutableSet<Path> getBinaryJars();
 
-  /**
-   * @return classPath paths
-   */
+  /** @return classPath paths */
   public abstract ImmutableSet<Path> getClassPaths();
 
-  /**
-   * @return path to the jar containing sources for the library.
-   */
-  public abstract Optional<Path> getSourceJar();
+  /** @return path to the jar containing sources for the library. */
+  public abstract ImmutableSet<Path> getSourceJars();
 
-  /**
-   * @return url to the javadoc.
-   */
-  public abstract Optional<String> getJavadocUrl();
+  /** @return url to the javadoc. */
+  public abstract ImmutableSet<String> getJavadocUrls();
 
   @Value.Check
   protected void eitherBinaryJarOrClassPathPresent() {
-    Preconditions.checkArgument(getBinaryJar().isPresent() ^ !getClassPaths().isEmpty());
+    Preconditions.checkArgument(!getBinaryJars().isEmpty() ^ !getClassPaths().isEmpty());
   }
 
   @Override
   public void addAsDependency(
-      DependencyType dependencyType,
-      IjDependencyListBuilder dependencyListBuilder) {
+      DependencyType dependencyType, IjDependencyListBuilder dependencyListBuilder) {
     if (dependencyType.equals(DependencyType.COMPILED_SHADOW)) {
       dependencyListBuilder.addCompiledShadow(getName());
     } else {

@@ -21,11 +21,13 @@ import com.facebook.buck.jvm.java.FakeJavaPackageFinder;
 import com.facebook.buck.rules.CellPathResolver;
 import com.facebook.buck.testutil.TestConsole;
 import com.facebook.buck.util.ClassLoaderCache;
+import com.facebook.buck.util.DefaultProcessExecutor;
+import com.facebook.buck.util.FakeProcessExecutor;
+import com.facebook.buck.util.ProcessExecutor;
 import com.facebook.buck.util.environment.Platform;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
-
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
@@ -35,22 +37,23 @@ import java.util.concurrent.Executors;
 
 public class TestExecutionContext {
 
-  private static final CellPathResolver FAKE_CELL_PATH_RESOLVER = new CellPathResolver() {
-    @Override
-    public Path getCellPath(Optional<String> cellName) {
-      return Paths.get("");
-    }
+  private static final CellPathResolver FAKE_CELL_PATH_RESOLVER =
+      new CellPathResolver() {
+        @Override
+        public Path getCellPath(Optional<String> cellName) {
+          return Paths.get("");
+        }
 
-    @Override
-    public ImmutableMap<String, Path> getCellPaths() {
-      return ImmutableMap.of();
-    }
+        @Override
+        public ImmutableMap<String, Path> getCellPaths() {
+          return ImmutableMap.of();
+        }
 
-    @Override
-    public Optional<String> getCanonicalCellName(Path cellPath) {
-      return Optional.empty();
-    }
-  };
+        @Override
+        public Optional<String> getCanonicalCellName(Path cellPath) {
+          return Optional.empty();
+        }
+      };
 
   private TestExecutionContext() {
     // Utility class.
@@ -62,8 +65,8 @@ public class TestExecutionContext {
 
   public static ExecutionContext.Builder newBuilder() {
     Map<ExecutorPool, ListeningExecutorService> executors = new HashMap<>();
-    executors.put(ExecutorPool.CPU, MoreExecutors.listeningDecorator(
-        Executors.newCachedThreadPool()));
+    executors.put(
+        ExecutorPool.CPU, MoreExecutors.listeningDecorator(Executors.newCachedThreadPool()));
     return ExecutionContext.builder()
         .setConsole(new TestConsole())
         .setBuckEventBus(BuckEventBusFactory.newInstance())
@@ -72,11 +75,17 @@ public class TestExecutionContext {
         .setJavaPackageFinder(new FakeJavaPackageFinder())
         .setClassLoaderCache(testClassLoaderCache)
         .setExecutors(executors)
+        .setProcessExecutor(new FakeProcessExecutor())
         .setCellPathResolver(FAKE_CELL_PATH_RESOLVER);
-
   }
 
   public static ExecutionContext newInstance() {
     return newBuilder().build();
+  }
+
+  public static ExecutionContext newInstanceWithRealProcessExecutor() {
+    TestConsole console = new TestConsole();
+    ProcessExecutor processExecutor = new DefaultProcessExecutor(console);
+    return newBuilder().setConsole(console).setProcessExecutor(processExecutor).build();
   }
 }

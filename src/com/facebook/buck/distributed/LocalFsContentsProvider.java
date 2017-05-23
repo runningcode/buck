@@ -28,7 +28,6 @@ import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.rules.RuleKey;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -41,17 +40,18 @@ public class LocalFsContentsProvider implements FileContentsProvider {
 
   private final DirArtifactCache dirCache;
 
-  public LocalFsContentsProvider(Path cacheDirAbsPath) throws IOException {
+  public LocalFsContentsProvider(Path cacheDirAbsPath) throws InterruptedException, IOException {
     Preconditions.checkArgument(
         Files.isDirectory(cacheDirAbsPath),
         "The cache directory must exist. cacheDirAbsPath=[%s]",
         cacheDirAbsPath);
-    this.dirCache = new DirArtifactCache(
-        CACHE_NAME,
-        new ProjectFilesystem(cacheDirAbsPath),
-        Paths.get(CACHE_NAME),
-        CacheReadMode.READWRITE,
-        Optional.empty());
+    this.dirCache =
+        new DirArtifactCache(
+            CACHE_NAME,
+            new ProjectFilesystem(cacheDirAbsPath),
+            Paths.get(CACHE_NAME),
+            CacheReadMode.READWRITE,
+            Optional.empty());
   }
 
   @Override
@@ -62,13 +62,10 @@ public class LocalFsContentsProvider implements FileContentsProvider {
     return cacheResult.getType() == CacheResultType.HIT;
   }
 
-  public void writeFileAndGetInputStream(
-      BuildJobStateFileHashEntry entry,
-      Path absPath) throws IOException {
+  public void writeFileAndGetInputStream(BuildJobStateFileHashEntry entry, Path absPath)
+      throws IOException {
     RuleKey key = new RuleKey(entry.getHashCode());
-    ArtifactInfo artifactInfo = ArtifactInfo.builder()
-        .setRuleKeys(ImmutableList.of(key))
-        .build();
+    ArtifactInfo artifactInfo = ArtifactInfo.builder().setRuleKeys(ImmutableList.of(key)).build();
     BorrowablePath nonBorrowablePath = BorrowablePath.notBorrowablePath(absPath);
     try {
       dirCache.store(artifactInfo, nonBorrowablePath).get();

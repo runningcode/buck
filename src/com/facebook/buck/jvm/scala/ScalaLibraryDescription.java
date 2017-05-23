@@ -16,31 +16,35 @@
 
 package com.facebook.buck.jvm.scala;
 
-
 import com.facebook.buck.jvm.java.HasJavaAbi;
 import com.facebook.buck.model.BuildTarget;
 import com.facebook.buck.parser.NoSuchBuildTargetException;
-import com.facebook.buck.rules.AbstractDescriptionArg;
 import com.facebook.buck.rules.BuildRule;
 import com.facebook.buck.rules.BuildRuleParams;
 import com.facebook.buck.rules.BuildRuleResolver;
 import com.facebook.buck.rules.CellPathResolver;
+import com.facebook.buck.rules.CommonDescriptionArg;
 import com.facebook.buck.rules.Description;
-import com.facebook.buck.rules.coercer.Hint;
+import com.facebook.buck.rules.HasDeclaredDeps;
+import com.facebook.buck.rules.HasSrcs;
+import com.facebook.buck.rules.HasTests;
+import com.facebook.buck.rules.Hint;
 import com.facebook.buck.rules.ImplicitDepsInferringDescription;
 import com.facebook.buck.rules.SourcePath;
 import com.facebook.buck.rules.TargetGraph;
 import com.facebook.buck.util.OptionalCompat;
-import com.facebook.infer.annotation.SuppressFieldNotInitialized;
+import com.facebook.buck.util.immutables.BuckStyleImmutable;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSortedSet;
-
 import java.nio.file.Path;
 import java.util.Optional;
+import org.immutables.value.Value;
 
-public class ScalaLibraryDescription implements Description<ScalaLibraryDescription.Arg>,
-    ImplicitDepsInferringDescription<ScalaLibraryDescription.Arg> {
+public class ScalaLibraryDescription
+    implements Description<ScalaLibraryDescriptionArg>,
+        ImplicitDepsInferringDescription<
+            ScalaLibraryDescription.AbstractScalaLibraryDescriptionArg> {
 
   private final ScalaBuckConfig scalaBuckConfig;
 
@@ -49,22 +53,21 @@ public class ScalaLibraryDescription implements Description<ScalaLibraryDescript
   }
 
   @Override
-  public Arg createUnpopulatedConstructorArg() {
-    return new Arg();
+  public Class<ScalaLibraryDescriptionArg> getConstructorArgType() {
+    return ScalaLibraryDescriptionArg.class;
   }
 
   @Override
-  public <A extends Arg> BuildRule createBuildRule(
+  public BuildRule createBuildRule(
       TargetGraph targetGraph,
       final BuildRuleParams rawParams,
       final BuildRuleResolver resolver,
       CellPathResolver cellRoots,
-      A args) throws NoSuchBuildTargetException {
-    ScalaLibraryBuilder scalaLibraryBuilder = new ScalaLibraryBuilder(
-        rawParams,
-        resolver,
-        scalaBuckConfig)
-        .setArgs(args);
+      ScalaLibraryDescriptionArg args)
+      throws NoSuchBuildTargetException {
+    ScalaLibraryBuilder scalaLibraryBuilder =
+        new ScalaLibraryBuilder(targetGraph, rawParams, resolver, cellRoots, scalaBuckConfig)
+            .setArgs(args);
 
     return HasJavaAbi.isAbiTarget(rawParams.getBuildTarget())
         ? scalaLibraryBuilder.buildAbi()
@@ -75,7 +78,7 @@ public class ScalaLibraryDescription implements Description<ScalaLibraryDescript
   public void findDepsForTargetFromConstructorArgs(
       BuildTarget buildTarget,
       CellPathResolver cellRoots,
-      Arg constructorArg,
+      AbstractScalaLibraryDescriptionArg constructorArg,
       ImmutableCollection.Builder<BuildTarget> extraDepsBuilder,
       ImmutableCollection.Builder<BuildTarget> targetGraphOnlyDepsBuilder) {
     extraDepsBuilder
@@ -84,23 +87,26 @@ public class ScalaLibraryDescription implements Description<ScalaLibraryDescript
         .addAll(OptionalCompat.asSet(scalaBuckConfig.getScalacTarget()));
   }
 
-  @SuppressFieldNotInitialized
-  public static class Arg extends AbstractDescriptionArg {
-    public ImmutableSortedSet<SourcePath> srcs = ImmutableSortedSet.of();
-    public ImmutableSortedSet<SourcePath> resources = ImmutableSortedSet.of();
-    public ImmutableList<String> extraArguments = ImmutableList.of();
-    // Note: scala does not have a exported_deps because scala needs the transitive closure of
-    // dependencies to compile. deps is effectively exported_deps.
-    public ImmutableSortedSet<BuildTarget> providedDeps = ImmutableSortedSet.of();
-    public ImmutableSortedSet<BuildTarget> deps = ImmutableSortedSet.of();
+  // Note: scala does not have a exported_deps because scala needs the transitive closure of
+  // dependencies to compile. deps is effectively exported_deps.
+  interface CoreArg extends CommonDescriptionArg, HasDeclaredDeps, HasSrcs, HasTests {
+    @Value.NaturalOrder
+    ImmutableSortedSet<SourcePath> getResources();
+
+    ImmutableList<String> getExtraArguments();
+
+    @Value.NaturalOrder
+    ImmutableSortedSet<BuildTarget> getProvidedDeps();
 
     @Hint(isInput = false)
-    public Optional<Path> resourcesRoot;
-    public Optional<SourcePath> manifestFile;
-    public Optional<String> mavenCoords;
+    Optional<Path> getResourcesRoot();
 
-    @Hint(isDep = false)
-    public ImmutableSortedSet<BuildTarget> tests = ImmutableSortedSet.of();
+    Optional<SourcePath> getManifestFile();
+
+    Optional<String> getMavenCoords();
   }
 
+  @BuckStyleImmutable
+  @Value.Immutable
+  interface AbstractScalaLibraryDescriptionArg extends CoreArg {}
 }

@@ -25,13 +25,11 @@ import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.step.ExecutionContext;
 import com.facebook.buck.step.TestExecutionContext;
 import com.facebook.buck.testutil.FakeProjectFilesystem;
-
-import org.junit.Before;
-import org.junit.Test;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.Before;
+import org.junit.Test;
 
 public class RmStepTest {
 
@@ -39,7 +37,7 @@ public class RmStepTest {
   private ProjectFilesystem filesystem;
 
   @Before
-  public void setUp() throws IOException {
+  public void setUp() throws InterruptedException, IOException {
     context = TestExecutionContext.newInstance();
     filesystem = FakeProjectFilesystem.createJavaOnlyFilesystem();
   }
@@ -82,7 +80,6 @@ public class RmStepTest {
     assertEquals(1, step.execute(context).getExitCode());
   }
 
-
   @Test
   public void deletingNonExistentFileSucceeds() throws IOException {
     Path file = getNonExistentFile();
@@ -123,5 +120,4 @@ public class RmStepTest {
     assertFalse(Files.exists(file));
     return file;
   }
-
 }

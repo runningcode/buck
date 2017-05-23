@@ -17,16 +17,18 @@ package com.facebook.buck.ide.intellij;
 
 import com.facebook.buck.ide.intellij.aggregation.AggregationContext;
 import com.facebook.buck.ide.intellij.model.DependencyType;
-import com.facebook.buck.ide.intellij.model.IjProjectConfig;
-import com.facebook.buck.ide.intellij.model.folders.IJFolderFactory;
+import com.facebook.buck.ide.intellij.model.IjModule;
 import com.facebook.buck.ide.intellij.model.IjModuleFactoryResolver;
 import com.facebook.buck.ide.intellij.model.IjModuleRule;
+import com.facebook.buck.ide.intellij.model.IjProjectConfig;
+import com.facebook.buck.ide.intellij.model.folders.IJFolderFactory;
 import com.facebook.buck.ide.intellij.model.folders.SourceFolder;
 import com.facebook.buck.ide.intellij.model.folders.TestFolder;
 import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.jvm.java.JvmLibraryArg;
 import com.facebook.buck.model.BuildTarget;
 import com.facebook.buck.model.BuildTargets;
+import com.facebook.buck.rules.CommonDescriptionArg;
 import com.facebook.buck.rules.TargetNode;
 import com.facebook.buck.util.MoreCollectors;
 import com.google.common.collect.ImmutableMap;
@@ -34,16 +36,16 @@ import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Ordering;
-
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
-public abstract class BaseIjModuleRule<T> implements IjModuleRule<T> {
+public abstract class BaseIjModuleRule<T extends CommonDescriptionArg> implements IjModuleRule<T> {
 
   protected final ProjectFilesystem projectFilesystem;
   protected final IjModuleFactoryResolver moduleFactoryResolver;
@@ -75,19 +77,18 @@ public abstract class BaseIjModuleRule<T> implements IjModuleRule<T> {
                   Path parent = path.getParent();
                   return parent == null ? defaultParent : parent;
                 },
-                path -> path)
-        );
+                path -> path));
   }
 
   /**
    * Add the set of input paths to the {@link IjModule.Builder} as source folders.
    *
    * @param foldersToInputsIndex mapping of source folders to their inputs.
-   * @param wantsPackagePrefix whether folders should be annotated with a package prefix. This
-   *                           only makes sense when the source folder is Java source code.
+   * @param wantsPackagePrefix whether folders should be annotated with a package prefix. This only
+   *     makes sense when the source folder is Java source code.
    * @param context the module to add the folders to.
    */
-  protected  void addSourceFolders(
+  protected void addSourceFolders(
       IJFolderFactory factory,
       ImmutableMultimap<Path, Path> foldersToInputsIndex,
       boolean wantsPackagePrefix,
@@ -97,21 +98,18 @@ public abstract class BaseIjModuleRule<T> implements IjModuleRule<T> {
           factory.create(
               entry.getKey(),
               wantsPackagePrefix,
-              ImmutableSortedSet.copyOf(Ordering.natural(), entry.getValue())
-          )
-      );
+              ImmutableSortedSet.copyOf(Ordering.natural(), entry.getValue())));
     }
   }
 
   private void addDepsAndFolder(
       IJFolderFactory folderFactory,
       DependencyType dependencyType,
-      TargetNode<?, ?> targetNode,
+      TargetNode<T, ?> targetNode,
       boolean wantsPackagePrefix,
-      ModuleBuildContext context,
-      ImmutableSet<Path> inputPaths
-  ) {
-    ImmutableMultimap<Path, Path> foldersToInputsIndex = getSourceFoldersToInputsIndex(inputPaths);
+      ModuleBuildContext context) {
+    ImmutableMultimap<Path, Path> foldersToInputsIndex =
+        getSourceFoldersToInputsIndex(targetNode.getInputs());
     addSourceFolders(folderFactory, foldersToInputsIndex, wantsPackagePrefix, context);
     addDeps(foldersToInputsIndex, targetNode, dependencyType, context);
 
@@ -122,62 +120,29 @@ public abstract class BaseIjModuleRule<T> implements IjModuleRule<T> {
     }
   }
 
-  private void addDepsAndFolder(
-      IJFolderFactory folderFactory,
-      DependencyType dependencyType,
-      TargetNode<?, ?> targetNode,
-      boolean wantsPackagePrefix,
-      ModuleBuildContext context
-  ) {
-    addDepsAndFolder(
-        folderFactory,
-        dependencyType,
-        targetNode,
-        wantsPackagePrefix,
-        context,
-        targetNode.getInputs());
-  }
-
   protected void addDepsAndSources(
-      TargetNode<?, ?> targetNode,
-      boolean wantsPackagePrefix,
-      ModuleBuildContext context) {
+      TargetNode<T, ?> targetNode, boolean wantsPackagePrefix, ModuleBuildContext context) {
     addDepsAndFolder(
-        SourceFolder.FACTORY,
-        DependencyType.PROD,
-        targetNode,
-        wantsPackagePrefix,
-        context);
+        SourceFolder.FACTORY, DependencyType.PROD, targetNode, wantsPackagePrefix, context);
   }
 
   protected void addDepsAndTestSources(
-      TargetNode<?, ?> targetNode,
-      boolean wantsPackagePrefix,
-      ModuleBuildContext context) {
+      TargetNode<T, ?> targetNode, boolean wantsPackagePrefix, ModuleBuildContext context) {
     addDepsAndFolder(
-        TestFolder.FACTORY,
-        DependencyType.TEST,
-        targetNode,
-        wantsPackagePrefix,
-        context);
+        TestFolder.FACTORY, DependencyType.TEST, targetNode, wantsPackagePrefix, context);
   }
 
-  private static void addDeps(
+  private void addDeps(
       ImmutableMultimap<Path, Path> foldersToInputsIndex,
-      TargetNode<?, ?> targetNode,
+      TargetNode<T, ?> targetNode,
       DependencyType dependencyType,
       ModuleBuildContext context) {
-    context.addDeps(
-        foldersToInputsIndex.keySet(),
-        targetNode.getBuildDeps(),
-        dependencyType);
+    context.addDeps(foldersToInputsIndex.keySet(), targetNode.getBuildDeps(), dependencyType);
   }
 
   @SuppressWarnings("unchecked")
   private void addAnnotationOutputIfNeeded(
-      IJFolderFactory folderFactory,
-      TargetNode<?, ?> targetNode,
-      ModuleBuildContext context) {
+      IJFolderFactory folderFactory, TargetNode<T, ?> targetNode, ModuleBuildContext context) {
     TargetNode<? extends JvmLibraryArg, ?> jvmLibraryTargetNode =
         (TargetNode<? extends JvmLibraryArg, ?>) targetNode;
 
@@ -190,30 +155,31 @@ public abstract class BaseIjModuleRule<T> implements IjModuleRule<T> {
     Path annotationOutputPath = annotationOutput.get();
     context.addGeneratedSourceCodeFolder(
         folderFactory.create(
-            annotationOutputPath,
-            false,
-            ImmutableSortedSet.of(annotationOutputPath))
-    );
+            annotationOutputPath, false, ImmutableSortedSet.of(annotationOutputPath)));
   }
 
   private void addGeneratedOutputIfNeeded(
-      IJFolderFactory folderFactory,
-      TargetNode<?, ?> targetNode,
-      ModuleBuildContext context) {
+      IJFolderFactory folderFactory, TargetNode<T, ?> targetNode, ModuleBuildContext context) {
 
-    Set<Path> generatedSourcePaths = findConfiguredGeneratedSourcePaths(targetNode);
+    ImmutableSet<Path> generatedSourcePaths = findConfiguredGeneratedSourcePaths(targetNode);
 
     for (Path generatedSourcePath : generatedSourcePaths) {
       context.addGeneratedSourceCodeFolder(
           folderFactory.create(
-              generatedSourcePath,
-              false,
-              ImmutableSortedSet.of(generatedSourcePath))
-      );
+              generatedSourcePath, false, ImmutableSortedSet.of(generatedSourcePath)));
     }
   }
 
-  private Set<Path> findConfiguredGeneratedSourcePaths(TargetNode<?, ?> targetNode) {
+  private ImmutableSet<Path> findConfiguredGeneratedSourcePaths(TargetNode<T, ?> targetNode) {
+    ImmutableSet.Builder<Path> generatedSourcePaths = ImmutableSet.builder();
+
+    generatedSourcePaths.addAll(findConfiguredGeneratedSourcePathsUsingDeps(targetNode));
+    generatedSourcePaths.addAll(findConfiguredGeneratedSourcePathsUsingLabels(targetNode));
+
+    return generatedSourcePaths.build();
+  }
+
+  private Set<Path> findConfiguredGeneratedSourcePathsUsingDeps(TargetNode<T, ?> targetNode) {
     ImmutableMap<String, String> depToGeneratedSourcesMap =
         projectConfig.getDepToGeneratedSourcesMap();
     BuildTarget buildTarget = targetNode.getBuildTarget();
@@ -224,19 +190,34 @@ public abstract class BaseIjModuleRule<T> implements IjModuleRule<T> {
       String buildTargetName = dependencyTarget.toString();
       String generatedSourceWithPattern = depToGeneratedSourcesMap.get(buildTargetName);
       if (generatedSourceWithPattern != null) {
-        String generatedSource = generatedSourceWithPattern.replaceAll(
-            "%name%",
-            buildTarget.getShortNameAndFlavorPostfix());
-        Path generatedSourcePath = BuildTargets.getGenPath(
-            projectFilesystem,
-            buildTarget,
-            generatedSource);
+        String generatedSource =
+            generatedSourceWithPattern.replaceAll(
+                "%name%", buildTarget.getShortNameAndFlavorPostfix());
+        Path generatedSourcePath =
+            BuildTargets.getGenPath(projectFilesystem, buildTarget, generatedSource);
 
         generatedSourcePaths.add(generatedSourcePath);
       }
     }
 
     return generatedSourcePaths;
+  }
+
+  private ImmutableSet<Path> findConfiguredGeneratedSourcePathsUsingLabels(
+      TargetNode<T, ?> targetNode) {
+    BuildTarget buildTarget = targetNode.getBuildTarget();
+    ImmutableMap<String, String> labelToGeneratedSourcesMap =
+        projectConfig.getLabelToGeneratedSourcesMap();
+
+    return targetNode
+        .getConstructorArg()
+        .getLabels()
+        .stream()
+        .map(labelToGeneratedSourcesMap::get)
+        .filter(Objects::nonNull)
+        .map(pattern -> pattern.replaceAll("%name%", buildTarget.getShortNameAndFlavorPostfix()))
+        .map(path -> BuildTargets.getGenPath(projectFilesystem, buildTarget, path))
+        .collect(MoreCollectors.toImmutableSet());
   }
 
   @Override

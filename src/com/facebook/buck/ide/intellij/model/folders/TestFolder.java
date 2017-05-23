@@ -17,12 +17,9 @@
 package com.facebook.buck.ide.intellij.model.folders;
 
 import com.google.common.collect.ImmutableSortedSet;
-
 import java.nio.file.Path;
 
-/**
- * A path which contains a set of sources we wish to present to IntelliJ.
- */
+/** A path which contains a set of sources we wish to present to IntelliJ. */
 public class TestFolder extends InclusiveFolder {
 
   public static final IJFolderFactory FACTORY = TestFolder::new;
@@ -33,6 +30,10 @@ public class TestFolder extends InclusiveFolder {
 
   public TestFolder(Path path) {
     super(path);
+  }
+
+  public TestFolder(Path path, boolean wantsPackagePrefix) {
+    super(path, wantsPackagePrefix);
   }
 
   @Override

@@ -92,9 +92,19 @@ java_library(
 )
 
 java_library(
+    name = "javac-compilation-mode",
+    srcs = [
+        "JavacCompilationMode.java",
+    ],
+    visibility = ["PUBLIC"],
+    deps = [],
+)
+
+java_library(
     name = "javac-sink",
     srcs = [
         "JavacEventSink.java",
+        "JavacEventSinkScopedSimplePerfEvent.java",
     ],
     visibility = ["PUBLIC"],
     deps = [
@@ -136,6 +146,7 @@ java_immutables_library(
         "AbstractJavaOptions.java",
         "AbstractJavacExecutionContext.java",
         "AbstractJavacOptions.java",
+        "AbstractJavacPluginJsr199Fields.java",
         "AbstractJavacPluginProperties.java",
         "AbstractJavacSpec.java",
         "AbstractJavacVersion.java",
@@ -162,7 +173,8 @@ java_immutables_library(
         "HasSources.java",
         "JarBackedJavac.java",
         "JarBackedJavacProvider.java",
-        "JarDirectoryStepHelper.java",
+        "JarDiffer.java",
+        "JarDumper.java",
         "JarFileObject.java",
         "JavaInMemoryFileManager.java",
         "JavaInMemoryFileObject.java",
@@ -177,6 +189,7 @@ java_immutables_library(
         "JdkProvidedInMemoryJavac.java",
         "Jsr199Javac.java",
         "Jsr199TracingBridge.java",
+        "LoggingJarBuilderObserver.java",
         "MavenPublishable.java",
         "NoOpClassUsageFileWriter.java",
         "OptionsConsumer.java",
@@ -187,6 +200,9 @@ java_immutables_library(
         "ResolvedJavacPluginProperties.java",
         "StandardJavaFileManagerFactory.java",
         "TracingProcessorWrapper.java",
+    ],
+    exported_deps = [
+        "//src/com/facebook/buck/jvm/java:javac-compilation-mode",
     ],
     provided_deps = [
         # Event API is loaded by the bootstrapper at runtime; don't need to depend on it strongly
@@ -247,6 +263,7 @@ java_immutables_library(
         "//src/com/facebook/buck/util/autosparse:autosparse_config",
         "//src/com/facebook/buck/util/concurrent:concurrent",
         "//src/com/facebook/buck/util/environment:platform",
+        "//src/com/facebook/buck/util/function:function",
         "//src/com/facebook/buck/util/immutables:immutables",
         "//src/com/facebook/buck/util/sha1:sha1",
         "//src/com/facebook/buck/util/versioncontrol:versioncontrol",
@@ -254,6 +271,7 @@ java_immutables_library(
         "//src/com/facebook/buck/zip:stream",
         "//src/com/facebook/buck/zip:unzip",
         "//third-party/java/asm:asm",
+        "//third-party/java/diffutils:diffutils",
         "//third-party/java/gson:gson",
         "//third-party/java/guava:guava",
         "//third-party/java/immutables:immutables",
@@ -307,16 +325,17 @@ java_library(
     ],
 )
 
-java_library(
+java_immutables_library(
     name = "rules",
     srcs = [
         "BuiltInJavac.java",
         "CalculateAbi.java",
         "CalculateAbiFromClasses.java",
+        "CalculateAbiFromSource.java",
+        "CompareAbis.java",
         "DefaultJavaLibrary.java",
         "DefaultJavaLibraryBuilder.java",
         "ForkMode.java",
-        "JarArchiveDependencySupplier.java",
         "JarFattener.java",
         "JarShape.java",
         "JavaAnnotationProcessor.java",
@@ -462,6 +481,7 @@ java_library(
 java_immutables_library(
     name = "steps",
     srcs = [
+        "AbstractDiffAbisStep.java",
         "AbstractJUnitJvmArgs.java",
         "AccumulateClassNamesStep.java",
         "BaseCompileToJarStepFactory.java",
@@ -499,6 +519,7 @@ java_immutables_library(
         "//src/com/facebook/buck/io:transport",
         "//src/com/facebook/buck/jvm/core:classhash",
         "//src/com/facebook/buck/jvm/core:packagefinder",
+        "//src/com/facebook/buck/jvm/java:config",
         "//src/com/facebook/buck/jvm/java:javac-sink",
         "//src/com/facebook/buck/jvm/java:support",
         "//src/com/facebook/buck/jvm/java/abi:abi",
@@ -539,6 +560,7 @@ java_immutables_library(
         "//src/com/facebook/buck/zip:stream",
         "//src/com/facebook/buck/zip:unzip",
         "//third-party/java/asm:asm",
+        "//third-party/java/diffutils:diffutils",
         "//third-party/java/gson:gson",
         "//third-party/java/guava:guava",
         "//third-party/java/immutables:immutables",

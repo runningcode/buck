@@ -16,20 +16,19 @@
 package com.facebook.buck.ide.intellij.lang.java;
 
 import com.facebook.buck.ide.intellij.BaseIjModuleRule;
-import com.facebook.buck.ide.intellij.model.IjModuleFactoryResolver;
-import com.facebook.buck.ide.intellij.model.IjModuleType;
-import com.facebook.buck.ide.intellij.model.IjProjectConfig;
 import com.facebook.buck.ide.intellij.ModuleBuildContext;
 import com.facebook.buck.ide.intellij.aggregation.AggregationContext;
 import com.facebook.buck.ide.intellij.aggregation.AggregationKeys;
+import com.facebook.buck.ide.intellij.model.IjModuleFactoryResolver;
+import com.facebook.buck.ide.intellij.model.IjModuleType;
+import com.facebook.buck.ide.intellij.model.IjProjectConfig;
 import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.jvm.java.JavaLibraryDescription;
 import com.facebook.buck.rules.Description;
 import com.facebook.buck.rules.TargetNode;
-
 import java.util.Optional;
 
-public class JavaLibraryModuleRule extends BaseIjModuleRule<JavaLibraryDescription.Arg> {
+public class JavaLibraryModuleRule extends BaseIjModuleRule<JavaLibraryDescription.CoreArg> {
 
   public JavaLibraryModuleRule(
       ProjectFilesystem projectFilesystem,
@@ -45,33 +44,26 @@ public class JavaLibraryModuleRule extends BaseIjModuleRule<JavaLibraryDescripti
 
   @Override
   public void apply(
-      TargetNode<JavaLibraryDescription.Arg, ?> target,
-      ModuleBuildContext context) {
-    addDepsAndSources(
-        target,
-        true /* wantsPackagePrefix */,
-        context);
+      TargetNode<JavaLibraryDescription.CoreArg, ?> target, ModuleBuildContext context) {
+    addDepsAndSources(target, true /* wantsPackagePrefix */, context);
     JavaLibraryRuleHelper.addCompiledShadowIfNeeded(projectConfig, target, context);
     context.setJavaLanguageLevel(JavaLibraryRuleHelper.getLanguageLevel(projectConfig, target));
   }
 
   @Override
-  public IjModuleType detectModuleType(TargetNode<JavaLibraryDescription.Arg, ?> targetNode) {
+  public IjModuleType detectModuleType(TargetNode<JavaLibraryDescription.CoreArg, ?> targetNode) {
     return IjModuleType.JAVA_MODULE;
   }
 
   @Override
   public void applyDuringAggregation(
-      AggregationContext context, TargetNode<JavaLibraryDescription.Arg, ?> targetNode) {
+      AggregationContext context, TargetNode<JavaLibraryDescription.CoreArg, ?> targetNode) {
     super.applyDuringAggregation(context, targetNode);
 
-    Optional<String> languageLevel = JavaLibraryRuleHelper.getLanguageLevel(
-        projectConfig,
-        targetNode);
+    Optional<String> languageLevel =
+        JavaLibraryRuleHelper.getLanguageLevel(projectConfig, targetNode);
     if (languageLevel.isPresent()) {
-      context.addAggregationKey(
-          AggregationKeys.JAVA_LANGUAGE_LEVEL,
-          languageLevel);
+      context.addAggregationKey(AggregationKeys.JAVA_LANGUAGE_LEVEL, languageLevel);
     }
   }
 }

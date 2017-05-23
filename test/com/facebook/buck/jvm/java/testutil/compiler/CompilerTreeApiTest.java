@@ -25,16 +25,11 @@ import com.google.common.collect.ImmutableMap;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.util.TaskListener;
 import com.sun.source.util.Trees;
-
-import org.hamcrest.Matchers;
-import org.junit.Rule;
-
 import java.io.File;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Map;
 import java.util.stream.Collectors;
-
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
@@ -47,17 +42,19 @@ import javax.lang.model.type.TypeVariable;
 import javax.lang.model.util.ElementFilter;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
+import org.hamcrest.BaseMatcher;
+import org.hamcrest.Description;
+import org.hamcrest.Matcher;
+import org.hamcrest.Matchers;
+import org.junit.Rule;
 
-/**
- * Base class for tests that want to use the Compiler Tree API exposed by javac.
- */
+/** Base class for tests that want to use the Compiler Tree API exposed by javac. */
 public abstract class CompilerTreeApiTest {
   public interface TaskListenerFactory {
     TaskListener newTaskListener(BuckJavacTask task);
   }
 
-  @Rule
-  public TestCompiler testCompiler = new TestCompiler();
+  @Rule public TestCompiler testCompiler = new TestCompiler();
 
   protected Elements elements;
   protected Trees trees;
@@ -71,16 +68,14 @@ public abstract class CompilerTreeApiTest {
     initCompiler(Collections.emptyMap());
   }
 
-  protected void initCompiler(
-      Map<String, String> fileNamesToContents) throws IOException {
+  protected void initCompiler(Map<String, String> fileNamesToContents) throws IOException {
 
     if (useFrontendOnlyJavacTask()) {
       testCompiler.useFrontendOnlyJavacTask();
     }
     for (Map.Entry<String, String> fileNameToContents : fileNamesToContents.entrySet()) {
       testCompiler.addSourceFileContents(
-          fileNameToContents.getKey(),
-          fileNameToContents.getValue());
+          fileNameToContents.getKey(), fileNameToContents.getValue());
     }
 
     trees = testCompiler.getTrees();
@@ -102,8 +97,8 @@ public abstract class CompilerTreeApiTest {
   }
 
   protected final Iterable<? extends CompilationUnitTree> compile(
-      Map<String, String> fileNamesToContents,
-      TaskListenerFactory taskListenerFactory) throws IOException {
+      Map<String, String> fileNamesToContents, TaskListenerFactory taskListenerFactory)
+      throws IOException {
 
     initCompiler(fileNamesToContents);
 
@@ -120,13 +115,11 @@ public abstract class CompilerTreeApiTest {
     return compilationUnits;
   }
 
-  protected void withClasspath(
-      Map<String, String> fileNamesToContents) throws IOException {
+  protected void withClasspath(Map<String, String> fileNamesToContents) throws IOException {
 
     for (Map.Entry<String, String> fileNameToContents : fileNamesToContents.entrySet()) {
       testCompiler.addClasspathFileContents(
-          fileNameToContents.getKey(),
-          fileNameToContents.getValue());
+          fileNameToContents.getKey(), fileNameToContents.getValue());
     }
   }
 
@@ -139,7 +132,8 @@ public abstract class CompilerTreeApiTest {
   }
 
   protected ExecutableElement findDefaultConstructor(TypeElement typeElement) {
-    return ElementFilter.constructorsIn(typeElement.getEnclosedElements()).stream()
+    return ElementFilter.constructorsIn(typeElement.getEnclosedElements())
+        .stream()
         .filter(element -> element.getParameters().isEmpty())
         .findFirst()
         .get();
@@ -152,10 +146,8 @@ public abstract class CompilerTreeApiTest {
       }
     }
 
-    throw new IllegalArgumentException(String.format(
-        "No such method in %s: %s",
-        typeElement.getQualifiedName(),
-        name));
+    throw new IllegalArgumentException(
+        String.format("No such method in %s: %s", typeElement.getQualifiedName(), name));
   }
 
   protected VariableElement findField(String name, TypeElement typeElement) {
@@ -165,10 +157,8 @@ public abstract class CompilerTreeApiTest {
       }
     }
 
-    throw new IllegalArgumentException(String.format(
-        "No such field in %s: %s",
-        typeElement.getQualifiedName(),
-        name));
+    throw new IllegalArgumentException(
+        String.format("No such field in %s: %s", typeElement.getQualifiedName(), name));
   }
 
   protected VariableElement findParameter(String name, ExecutableElement method) {
@@ -178,10 +168,8 @@ public abstract class CompilerTreeApiTest {
       }
     }
 
-    throw new IllegalArgumentException(String.format(
-        "No such parameter on %s: %s",
-        method.getSimpleName(),
-        name));
+    throw new IllegalArgumentException(
+        String.format("No such parameter on %s: %s", method.getSimpleName(), name));
   }
 
   protected void assertNameEquals(String expected, Name actual) {
@@ -192,6 +180,24 @@ public abstract class CompilerTreeApiTest {
     if (!types.isSameType(expected, actual)) {
       fail(String.format("Types are not the same.\nExpected: %s\nActual: %s", expected, actual));
     }
+  }
+
+  protected Matcher<TypeMirror> sameType(TypeMirror expected) {
+    return new BaseMatcher<TypeMirror>() {
+      @Override
+      public void describeTo(Description description) {
+        description.appendText(expected.toString());
+      }
+
+      @Override
+      public boolean matches(Object o) {
+        if (o instanceof TypeMirror) {
+          return types.isSameType(expected, (TypeMirror) o);
+        }
+
+        return false;
+      }
+    };
   }
 
   protected void assertNotSameType(TypeMirror expected, TypeMirror actual) {
@@ -210,12 +216,14 @@ public abstract class CompilerTreeApiTest {
 
   protected void assertErrors(String... messages) {
     assertThat(
-        testCompiler.getDiagnosticMessages()
+        testCompiler
+            .getDiagnosticMessages()
             .stream()
-            .map(diagnosticMessage ->
-                diagnosticMessage.substring(diagnosticMessage.lastIndexOf(File.separatorChar) + 1))
+            .map(
+                diagnosticMessage ->
+                    diagnosticMessage.substring(
+                        diagnosticMessage.lastIndexOf(File.separatorChar) + 1))
             .collect(Collectors.toSet()),
         Matchers.containsInAnyOrder(messages));
   }
-
 }

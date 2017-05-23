@@ -28,7 +28,6 @@ import com.facebook.buck.shell.WorkerProcessPool;
 import com.facebook.buck.util.Ansi;
 import com.facebook.buck.util.ClassLoaderCache;
 import com.facebook.buck.util.Console;
-import com.facebook.buck.util.DefaultProcessExecutor;
 import com.facebook.buck.util.ProcessExecutor;
 import com.facebook.buck.util.Verbosity;
 import com.facebook.buck.util.concurrent.ConcurrencyLimit;
@@ -40,9 +39,6 @@ import com.google.common.base.Preconditions;
 import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ListeningExecutorService;
-
-import org.immutables.value.Value;
-
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -50,6 +46,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import org.immutables.value.Value;
 
 @Value.Immutable
 @BuckStyleImmutable
@@ -83,14 +80,17 @@ abstract class AbstractExecutionContext implements Closeable {
   abstract Optional<AdbOptions> getAdbOptions();
 
   /**
-   * Worker process pools that are persisted across buck invocations inside buck daemon.
-   * If buck is running without daemon, there will be no persisted pools.
+   * Worker process pools that are persisted across buck invocations inside buck daemon. If buck is
+   * running without daemon, there will be no persisted pools.
    */
   @Value.Parameter
   abstract Optional<ConcurrentMap<String, WorkerProcessPool>> getPersistentWorkerPools();
 
   @Value.Parameter
   abstract CellPathResolver getCellPathResolver();
+
+  @Value.Parameter
+  abstract ProcessExecutor getProcessExecutor();
 
   /**
    * Returns an {@link AndroidPlatformTarget} if the user specified one. If the user failed to
@@ -132,8 +132,8 @@ abstract class AbstractExecutionContext implements Closeable {
   }
 
   /**
-   * Worker process pools that you can populate as needed. These will be destroyed as soon as
-   * buck invocation finishes, thus, these pools are not persisted across buck invocations.
+   * Worker process pools that you can populate as needed. These will be destroyed as soon as buck
+   * invocation finishes, thus, these pools are not persisted across buck invocations.
    */
   @Value.Default
   public ConcurrentMap<String, WorkerProcessPool> getWorkerProcessPools() {
@@ -153,11 +153,6 @@ abstract class AbstractExecutionContext implements Closeable {
   @Value.Default
   public ClassLoaderCache getClassLoaderCache() {
     return new ClassLoaderCache();
-  }
-
-  @Value.Default
-  public ProcessExecutor getProcessExecutor() {
-    return new DefaultProcessExecutor(getConsole());
   }
 
   @Value.Derived
@@ -186,13 +181,14 @@ abstract class AbstractExecutionContext implements Closeable {
   }
 
   /**
-   * Returns the {@link AndroidPlatformTarget}, if present. If not, throws a
-   * {@link RuntimeException}. Use this when your logic requires the user to specify the
-   * location of an Android SDK. A user who is building a "pure Java" (i.e., not Android) project
-   * using Buck should never have to exercise this code path.
-   * <p>
-   * If the location of an Android SDK is optional, then use
-   * {@link #getAndroidPlatformTargetSupplier()}.
+   * Returns the {@link AndroidPlatformTarget}, if present. If not, throws a {@link
+   * RuntimeException}. Use this when your logic requires the user to specify the location of an
+   * Android SDK. A user who is building a "pure Java" (i.e., not Android) project using Buck should
+   * never have to exercise this code path.
+   *
+   * <p>If the location of an Android SDK is optional, then use {@link
+   * #getAndroidPlatformTargetSupplier()}.
+   *
    * @throws RuntimeException if no AndroidPlatformTarget is available
    */
   @Value.Lazy
@@ -219,14 +215,13 @@ abstract class AbstractExecutionContext implements Closeable {
   }
 
   public ExecutionContext createSubContext(
-      PrintStream newStdout,
-      PrintStream newStderr,
-      Optional<Verbosity> verbosityOverride) {
-    Console console = new Console(
-        verbosityOverride.orElse(this.getConsole().getVerbosity()),
-        newStdout,
-        newStderr,
-        this.getConsole().getAnsi());
+      PrintStream newStdout, PrintStream newStderr, Optional<Verbosity> verbosityOverride) {
+    Console console =
+        new Console(
+            verbosityOverride.orElse(this.getConsole().getVerbosity()),
+            newStdout,
+            newStderr,
+            this.getConsole().getAnsi());
 
     return ExecutionContext.builder()
         .from(this)
