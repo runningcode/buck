@@ -59,7 +59,7 @@ public class DefaultKotlinLibraryBuilder extends DefaultJavaLibraryBuilder {
     protected CompileToJarStepFactory buildCompileStepFactory() {
       return new KotlincToJarStepFactory(
           Preconditions.checkNotNull(kotlinBuckConfig).getKotlinCompiler().get(),
-          extraKotlincArguments);
+          extraKotlincArguments, getJavac(), javacOptions);
     }
   }
 }

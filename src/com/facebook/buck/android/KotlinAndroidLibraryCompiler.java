@@ -17,19 +17,25 @@
 package com.facebook.buck.android;
 
 import com.facebook.buck.jvm.java.CompileToJarStepFactory;
+import com.facebook.buck.jvm.java.JavaBuckConfig;
+import com.facebook.buck.jvm.java.Javac;
+import com.facebook.buck.jvm.java.JavacFactory;
 import com.facebook.buck.jvm.java.JavacOptions;
 import com.facebook.buck.jvm.kotlin.KotlinBuckConfig;
 import com.facebook.buck.jvm.kotlin.KotlincToJarStepFactory;
 import com.facebook.buck.rules.BuildRuleResolver;
+import com.facebook.buck.rules.SourcePathRuleFinder;
 import com.google.common.collect.ImmutableList;
 
 public class KotlinAndroidLibraryCompiler extends AndroidLibraryCompiler {
 
   private final KotlinBuckConfig kotlinBuckConfig;
+  private final JavaBuckConfig javaBuckConfig;
 
-  public KotlinAndroidLibraryCompiler(KotlinBuckConfig kotlinBuckConfig) {
+  public KotlinAndroidLibraryCompiler(KotlinBuckConfig kotlinBuckConfig, JavaBuckConfig javaBuckConfig) {
     super();
     this.kotlinBuckConfig = kotlinBuckConfig;
+    this.javaBuckConfig = javaBuckConfig;
   }
 
   @Override
@@ -45,6 +51,12 @@ public class KotlinAndroidLibraryCompiler extends AndroidLibraryCompiler {
     return new KotlincToJarStepFactory(
         kotlinBuckConfig.getKotlinCompiler().get(),
         ImmutableList.of(),
+        getJavac(resolver, args),
+        javacOptions,
         ANDROID_CLASSPATH_FROM_CONTEXT);
+  }
+
+  private Javac getJavac(BuildRuleResolver resolver, AndroidLibraryDescription.CoreArg arg) {
+    return JavacFactory.create(new SourcePathRuleFinder(resolver), javaBuckConfig, arg);
   }
 }
