@@ -33,3 +33,12 @@ android_library(
     'PUBLIC',
   ],
 )
+
+android_library(
+  name = 'lib_mixed_sources',
+  srcs = glob(['Sample.kt', 'JavaClass.java']),
+  language = 'KOTLIN',
+  visibility = [
+    'PUBLIC',
+  ],
+)

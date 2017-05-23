@@ -23,6 +23,9 @@ import com.facebook.buck.cli.BuckConfig;
 import com.facebook.buck.cli.FakeBuckConfig;
 import com.facebook.buck.util.HumanReadableException;
 import com.facebook.buck.util.environment.Platform;
+
+import org.junit.AssumptionViolatedException;
+
 import java.io.IOException;
 import javax.annotation.Nullable;
 
@@ -40,5 +43,13 @@ public abstract class KotlinTestAssumptions {
       exception = e;
     }
     assumeNoException(exception);
+  }
+
+  /**
+   * Kotlinc doesn't support passing java files as arguments until 1.1.3.
+   * https://youtrack.jetbrains.com/issue/KT-17697
+   */
+  public static void assumeCompilerSupportsMixedSources() {
+    throw new AssumptionViolatedException("Kotlinc doesn't support mixed sources before 1.1.3");
   }
 }
