@@ -137,7 +137,7 @@ public class JavacToJarStepFactory extends BaseCompileToJarStepFactory {
   }
 
   @Override
-  Optional<String> getBootClasspath(BuildContext context) {
+  public Optional<String> getBootClasspath(BuildContext context) {
     JavacOptions buildTimeOptions = amender.amend(javacOptions, context);
     return buildTimeOptions.getBootclasspath();
   }
@@ -242,7 +242,7 @@ public class JavacToJarStepFactory extends BaseCompileToJarStepFactory {
     }
   }
 
-  private static void addAnnotationGenFolderStep(
+  public static void addAnnotationGenFolderStep(
       JavacOptions buildTimeOptions,
       ProjectFilesystem filesystem,
       ImmutableList.Builder<Step> steps,

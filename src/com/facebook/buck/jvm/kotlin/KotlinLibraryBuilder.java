@@ -62,7 +62,8 @@ public class KotlinLibraryBuilder extends DefaultJavaLibraryBuilder {
       return new KotlincToJarStepFactory(
           Preconditions.checkNotNull(kotlinBuckConfig).getKotlinc(),
           extraKotlincArguments,
-          EMPTY_EXTRA_CLASSPATH);
+          EMPTY_EXTRA_CLASSPATH,
+          getJavac(), javacOptions, javacOptionsAmender);
     }
   }
 }

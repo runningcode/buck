@@ -142,7 +142,7 @@ public abstract class BaseCompileToJarStepFactory implements CompileToJarStepFac
    * @return the bootclasspath.
    */
   @SuppressWarnings("unused")
-  Optional<String> getBootClasspath(BuildContext context) {
+  public Optional<String> getBootClasspath(BuildContext context) {
     return Optional.empty();
   }
 

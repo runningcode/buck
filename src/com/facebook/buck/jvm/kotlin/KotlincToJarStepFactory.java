@@ -16,9 +16,16 @@
 
 package com.facebook.buck.jvm.kotlin;
 
+import static com.facebook.buck.jvm.java.JavacToJarStepFactory.addAnnotationGenFolderStep;
+
 import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.jvm.java.BaseCompileToJarStepFactory;
 import com.facebook.buck.jvm.java.ClassUsageFileWriter;
+import com.facebook.buck.jvm.java.ClasspathChecker;
+import com.facebook.buck.jvm.java.Javac;
+import com.facebook.buck.jvm.java.JavacOptions;
+import com.facebook.buck.jvm.java.JavacOptionsAmender;
+import com.facebook.buck.jvm.java.JavacStep;
 import com.facebook.buck.model.BuildTarget;
 import com.facebook.buck.rules.BuildContext;
 import com.facebook.buck.rules.BuildableContext;
@@ -30,27 +37,43 @@ import com.facebook.buck.step.Step;
 import com.google.common.base.Function;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSortedSet;
+
+import java.nio.file.FileSystems;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 public class KotlincToJarStepFactory extends BaseCompileToJarStepFactory {
 
+  private static final PathMatcher JAVA_PATH_MATCHER = FileSystems.getDefault()
+            .getPathMatcher("glob:**.java");
+
   private final Kotlinc kotlinc;
   private final ImmutableList<String> extraArguments;
+  private final JavacOptions javacOptions;
   private final Function<BuildContext, Iterable<Path>> extraClassPath;
+  private final Javac javac;
+  private final JavacOptionsAmender amender;
 
   public KotlincToJarStepFactory(
       Kotlinc kotlinc,
       ImmutableList<String> extraArguments,
-      Function<BuildContext, Iterable<Path>> extraClassPath) {
+      Function<BuildContext, Iterable<Path>> extraClassPath,
+      Javac javac,
+      JavacOptions javacOptions,
+      JavacOptionsAmender amender) {
     this.kotlinc = kotlinc;
     this.extraArguments = extraArguments;
     this.extraClassPath = extraClassPath;
+    this.javac = javac;
+    this.javacOptions = javacOptions;
+    this.amender = amender;
   }
 
   @Override
   public void createCompileStep(
-      BuildContext buildContext,
+      BuildContext context,
       ImmutableSortedSet<Path> sourceFilePaths,
       BuildTarget invokingRule,
       SourcePathResolver resolver,
@@ -73,13 +96,54 @@ public class KotlincToJarStepFactory extends BaseCompileToJarStepFactory {
             pathToSrcsList,
             ImmutableSortedSet.<Path>naturalOrder()
                 .addAll(
-                    Optional.ofNullable(extraClassPath.apply(buildContext))
+                    Optional.ofNullable(extraClassPath.apply(context))
                         .orElse(ImmutableList.of()))
                 .addAll(declaredClasspathEntries)
                 .build(),
             kotlinc,
             extraArguments,
             filesystem));
+
+    ImmutableSortedSet<Path> javaSourceFiles = ImmutableSortedSet.copyOf(
+        sourceFilePaths
+            .stream()
+            .filter(JAVA_PATH_MATCHER::matches)
+            .collect(Collectors.toSet()));
+
+    // Don't invoke javac if we don't have any java files.
+    if (!javaSourceFiles.isEmpty()) {
+      final JavacOptions buildTimeOptions = amender.amend(javacOptions, context);
+      if (!javacOptions.getAnnotationProcessingParams().isEmpty()) {
+        // Javac requires that the root directory for generated sources already exist.
+        addAnnotationGenFolderStep(buildTimeOptions, filesystem, steps, buildableContext);
+      }
+
+      steps.add(new JavacStep(
+          outputDirectory,
+          usedClassesFileWriter,
+          workingDirectory,
+          javaSourceFiles,
+          pathToSrcsList,
+          ImmutableSortedSet.<Path>naturalOrder()
+              .add(outputDirectory)
+              .addAll(Optional.ofNullable(extraClassPath.apply(context)).orElse(ImmutableList.of()))
+              .addAll(declaredClasspathEntries)
+              .build(),
+          javac,
+          javacOptions,
+          invokingRule,
+          resolver,
+          filesystem,
+          new ClasspathChecker(),
+          Optional.empty()
+      ));
+    }
+  }
+
+  @Override
+  public Optional<String> getBootClasspath(BuildContext context) {
+    JavacOptions buildTimeOptions = amender.amend(javacOptions, context);
+    return buildTimeOptions.getBootclasspath();
   }
 
   @Override
