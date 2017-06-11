@@ -21,15 +21,32 @@ import static com.facebook.buck.jvm.java.JavaCompilationConstants.DEFAULT_JAVA_C
 import static com.facebook.buck.jvm.java.JavaCompilationConstants.DEFAULT_JAVA_OPTIONS;
 
 import com.facebook.buck.io.ProjectFilesystem;
+import com.facebook.buck.jvm.java.DefaultJavaLibrary;
+import com.facebook.buck.jvm.java.DefaultJavaLibraryBuilder;
 import com.facebook.buck.jvm.java.JavaBuckConfig;
+import com.facebook.buck.jvm.kotlin.KotlinBuckConfig;
 import com.facebook.buck.model.BuildTarget;
 import com.facebook.buck.rules.AbstractNodeBuilder;
+import com.facebook.buck.rules.BuildRuleParams;
+import com.facebook.buck.rules.BuildRuleResolver;
+import com.facebook.buck.rules.CellPathResolver;
+import com.facebook.buck.rules.TargetGraph;
+
 import java.util.Optional;
 
 public class RobolectricTestBuilder
     extends AbstractNodeBuilder<
         RobolectricTestDescriptionArg.Builder, RobolectricTestDescriptionArg,
         RobolectricTestDescription, RobolectricTest> {
+
+  private static final RobolectricLibraryLanguageBuilder JAVA_ONLY_COMPILER_FACTORY =
+      (arg, targetGraph, testsLibraryParams, resolver, cellRoots) ->
+          DefaultJavaLibrary.builder(
+              targetGraph,
+              testsLibraryParams,
+              resolver,
+              cellRoots,
+              DEFAULT_JAVA_CONFIG);
 
   private RobolectricTestBuilder(BuildTarget target, JavaBuckConfig javaBuckConfig) {
     super(
@@ -38,7 +55,8 @@ public class RobolectricTestBuilder
             DEFAULT_JAVA_OPTIONS,
             ANDROID_JAVAC_OPTIONS,
             /* testRuleTimeoutMs */ Optional.empty(),
-            null),
+            null,
+            JAVA_ONLY_COMPILER_FACTORY),
         target);
   }
 
@@ -49,7 +67,8 @@ public class RobolectricTestBuilder
             DEFAULT_JAVA_OPTIONS,
             ANDROID_JAVAC_OPTIONS,
             /* testRuleTimeoutMs */ Optional.empty(),
-            null),
+            null,
+            JAVA_ONLY_COMPILER_FACTORY),
         target,
         filesystem);
   }

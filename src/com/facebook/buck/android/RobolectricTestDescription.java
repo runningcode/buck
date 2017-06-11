@@ -16,9 +16,9 @@
 
 package com.facebook.buck.android;
 
+import com.facebook.buck.android.AndroidLibraryDescription.JvmLanguage;
 import com.facebook.buck.cxx.CxxPlatform;
 import com.facebook.buck.jvm.java.CalculateAbiFromClasses;
-import com.facebook.buck.jvm.java.DefaultJavaLibrary;
 import com.facebook.buck.jvm.java.HasJavaAbi;
 import com.facebook.buck.jvm.java.JavaBuckConfig;
 import com.facebook.buck.jvm.java.JavaLibrary;
@@ -55,8 +55,10 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Maps;
-import java.util.Optional;
+
 import org.immutables.value.Value;
+
+import java.util.Optional;
 
 public class RobolectricTestDescription
     implements Description<RobolectricTestDescriptionArg>,
@@ -72,18 +74,22 @@ public class RobolectricTestDescription
   private final JavacOptions templateOptions;
   private final Optional<Long> defaultTestRuleTimeoutMs;
   private final CxxPlatform cxxPlatform;
+  private final RobolectricLibraryLanguageBuilder robolectricLibraryLanguageBuilder;
 
   public RobolectricTestDescription(
       JavaBuckConfig javaBuckConfig,
       JavaOptions javaOptions,
       JavacOptions templateOptions,
       Optional<Long> defaultTestRuleTimeoutMs,
-      CxxPlatform cxxPlatform) {
+      CxxPlatform cxxPlatform,
+      RobolectricLibraryLanguageBuilder robolectricLibraryLanguageBuilder
+  ) {
     this.javaBuckConfig = javaBuckConfig;
     this.javaOptions = javaOptions;
     this.templateOptions = templateOptions;
     this.defaultTestRuleTimeoutMs = defaultTestRuleTimeoutMs;
     this.cxxPlatform = cxxPlatform;
+    this.robolectricLibraryLanguageBuilder = robolectricLibraryLanguageBuilder;
   }
 
   @Override
@@ -159,8 +165,12 @@ public class RobolectricTestDescription
 
     JavaLibrary testsLibrary =
         resolver.addToIndex(
-            DefaultJavaLibrary.builder(
-                    targetGraph, testsLibraryParams, resolver, cellRoots, javaBuckConfig)
+            robolectricLibraryLanguageBuilder.getJavaLibraryBuilder(
+                args,
+                targetGraph,
+                testsLibraryParams,
+                resolver,
+                cellRoots)
                 .setArgs(args)
                 .setJavacOptions(javacOptions)
                 .setJavacOptionsAmender(new BootClasspathAppender())
@@ -216,6 +226,8 @@ public class RobolectricTestDescription
     Optional<String> getRobolectricRuntimeDependency();
 
     Optional<SourcePath> getRobolectricManifest();
+
+    Optional<JvmLanguage> getLanguage();
 
     @Value.Default
     default boolean isUseOldStyleableFormat() {

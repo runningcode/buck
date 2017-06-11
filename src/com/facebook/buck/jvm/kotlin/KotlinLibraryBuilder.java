@@ -34,7 +34,7 @@ public class KotlinLibraryBuilder extends DefaultJavaLibraryBuilder {
   private final KotlinBuckConfig kotlinBuckConfig;
   private ImmutableList<String> extraKotlincArguments = ImmutableList.of();
 
-  KotlinLibraryBuilder(
+  public KotlinLibraryBuilder(
       TargetGraph targetGraph,
       BuildRuleParams params,
       BuildRuleResolver buildRuleResolver,

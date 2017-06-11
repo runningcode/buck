@@ -38,6 +38,7 @@ import com.facebook.buck.android.NdkCxxPlatforms;
 import com.facebook.buck.android.NdkLibraryDescription;
 import com.facebook.buck.android.PrebuiltNativeLibraryDescription;
 import com.facebook.buck.android.ProGuardConfig;
+import com.facebook.buck.android.DefaultRobolectricLibraryLanguageBuilder;
 import com.facebook.buck.android.RobolectricTestDescription;
 import com.facebook.buck.android.SmartDexingStep;
 import com.facebook.buck.apple.AppleAssetCatalogDescription;
@@ -687,7 +688,8 @@ public class KnownBuildRuleTypes {
             defaultJavaOptionsForTests,
             defaultJavacOptions,
             defaultTestRuleTimeoutMs,
-            defaultCxxPlatform));
+            defaultCxxPlatform,
+            new DefaultRobolectricLibraryLanguageBuilder(javaConfig, kotlinBuckConfig, scalaConfig)));
     builder.register(new RustBinaryDescription(rustBuckConfig, cxxPlatforms, defaultCxxPlatform));
     builder.register(new RustLibraryDescription(rustBuckConfig, cxxPlatforms, defaultCxxPlatform));
     builder.register(new RustTestDescription(rustBuckConfig, cxxPlatforms, defaultCxxPlatform));

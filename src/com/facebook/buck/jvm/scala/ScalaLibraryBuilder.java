@@ -29,7 +29,7 @@ public class ScalaLibraryBuilder extends DefaultJavaLibraryBuilder {
   private final ScalaBuckConfig scalaBuckConfig;
   private ImmutableList<String> extraArguments = ImmutableList.of();
 
-  ScalaLibraryBuilder(
+  public ScalaLibraryBuilder(
       TargetGraph targetGraph,
       BuildRuleParams params,
       BuildRuleResolver buildRuleResolver,
