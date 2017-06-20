@@ -20,6 +20,8 @@ import com.facebook.buck.io.MoreFiles;
 import com.facebook.buck.testutil.integration.ProjectWorkspace;
 import com.facebook.buck.testutil.integration.TemporaryPaths;
 import com.facebook.buck.testutil.integration.TestDataHelper;
+
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import org.junit.Before;
@@ -48,6 +50,19 @@ public class KotlinLibraryIntegrationTest {
   public void shouldCompileKotlinClass() throws Exception {
     ProjectWorkspace.ProcessResult buildResult =
         workspace.runBuckCommand("build", "//com/example/good:example");
+    buildResult.assertSuccess("Build should have succeeded.");
+  }
+
+  @Test
+  public void shouldAnnotationProcessorClass() throws Exception {
+    ProjectWorkspace.ProcessResult buildResult =
+        workspace.runBuckCommand("build", "//com/example/ap:kotlin");
+    Path resolve = workspace.getBuckPaths().getGenDir().resolve("com/example/ap/__kotlin__srcs");
+    File[] files = resolve.toFile().listFiles();
+
+    for (File theFile : files) {
+
+    }
     buildResult.assertSuccess("Build should have succeeded.");
   }
 

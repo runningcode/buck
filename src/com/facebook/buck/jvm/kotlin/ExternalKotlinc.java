@@ -38,6 +38,7 @@ import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSortedSet;
+
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -166,6 +167,16 @@ public class ExternalKotlinc implements Kotlinc {
   @Override
   public String getShortName() {
     return pathToKotlinc.toString();
+  }
+
+  @Override
+  public Path getAPPaths() {
+    throw new IllegalStateException("Not supported yet");
+  }
+
+  @Override
+  public Path getStdlibPath() {
+    throw new IllegalStateException("yo");
   }
 
   @Override

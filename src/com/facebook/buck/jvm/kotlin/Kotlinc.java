@@ -21,6 +21,7 @@ import com.facebook.buck.model.BuildTarget;
 import com.facebook.buck.rules.Tool;
 import com.facebook.buck.step.ExecutionContext;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -45,4 +46,7 @@ public interface Kotlinc extends Tool {
       Path pathToSrcsList);
 
   String getShortName();
+
+  Path getAPPaths();
+  Path getStdlibPath();
 }

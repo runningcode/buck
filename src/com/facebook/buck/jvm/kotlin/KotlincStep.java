@@ -18,6 +18,7 @@ package com.facebook.buck.jvm.kotlin;
 import static com.google.common.collect.Iterables.transform;
 
 import com.facebook.buck.io.ProjectFilesystem;
+import com.facebook.buck.log.Logger;
 import com.facebook.buck.model.BuildTarget;
 import com.facebook.buck.step.ExecutionContext;
 import com.facebook.buck.step.Step;
@@ -35,9 +36,13 @@ import java.nio.file.Path;
 import java.util.Optional;
 
 public class KotlincStep implements Step {
-  private static final String CLASSPATH_FLAG = "-cp";
+  private static final Logger LOG = Logger.get(KotlincStep.class);
+
+  private static final String CLASSPATH_FLAG = "-classpath";
   private static final String DESTINATION_FLAG = "-d";
   private static final String INCLUDE_RUNTIME_FLAG = "-include-runtime";
+  private static final String EXCLUDE_RUNTIME = "-no-stdlib";
+  private static final String EXCLUDE_REFLECT = "-no-reflect";
 
   private final Kotlinc kotlinc;
   private final ImmutableSortedSet<Path> combinedClassPathEntries;
@@ -83,11 +88,15 @@ public class KotlincStep implements Step {
         ExecutionContext firstOrderContext =
             context.createSubContext(stdout, stderr, Optional.of(verbosity))) {
 
+      ImmutableList<String> options = getOptions(context, combinedClassPathEntries);
+      String join = Joiner.on(" ").join(options);
+
+      LOG.error("Options were: " + join);
       int declaredDepsBuildResult =
           kotlinc.buildWithClasspath(
               firstOrderContext,
               invokingRule,
-              getOptions(context, combinedClassPathEntries),
+              options,
               sourceFilePaths,
               pathToSrcsList,
               Optional.empty(),
@@ -136,7 +145,11 @@ public class KotlincStep implements Step {
 
     final ImmutableList.Builder<String> builder = ImmutableList.builder();
 
-    builder.add(INCLUDE_RUNTIME_FLAG);
+//    builder.add(INCLUDE_RUNTIME_FLAG);
+    builder.add(EXCLUDE_REFLECT);
+    builder.add(EXCLUDE_RUNTIME);
+    builder.add("-jvm-target");
+    builder.add("1.6");
 
     if (!buildClasspathEntries.isEmpty()) {
       builder.add(
@@ -148,7 +161,9 @@ public class KotlincStep implements Step {
                       path -> filesystem.resolve(path).toAbsolutePath().toString())));
     }
 
-    builder.add(DESTINATION_FLAG, filesystem.resolve(outputDirectory).toString());
+    if (outputDirectory != null) {
+      builder.add(DESTINATION_FLAG, filesystem.resolve(outputDirectory).toString());
+    }
 
     if (!extraArguments.isEmpty()) {
       builder.addAll(extraArguments);

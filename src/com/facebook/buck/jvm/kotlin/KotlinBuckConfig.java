@@ -46,7 +46,7 @@ public class KotlinBuckConfig {
       ImmutableSet<Path> classpathEntries =
           ImmutableSet.of(getPathToStdlibJar(), getPathToCompilerJar());
 
-      return new JarBackedReflectedKotlinc(classpathEntries);
+      return new JarBackedReflectedKotlinc(classpathEntries, getPathToAP(), getPathToStdlibJar());
     }
   }
 
@@ -126,6 +126,31 @@ public class KotlinBuckConfig {
 
     throw new HumanReadableException(
         "Could not resolve kotlin compiler JAR location (kotlin home:" + getKotlinHome() + ").");
+  }
+
+  /**
+   * Get the path to the Kotlin annotation processing jar.
+   *
+   * @return the Kotlin annotation processing jar path
+   */
+  Path getPathToAP() {
+    Path compiler = getKotlinHome().resolve("kotlin-annotation-processing.jar");
+    if (Files.isRegularFile(compiler)) {
+      return compiler.normalize();
+    }
+
+    compiler = getKotlinHome().resolve(Paths.get("lib", "kotlin-annotation-processing.jar"));
+    if (Files.isRegularFile(compiler)) {
+      return compiler.normalize();
+    }
+
+    compiler = getKotlinHome().resolve(Paths.get("libexec", "lib", "kotlin-annotation-processing.jar"));
+    if (Files.isRegularFile(compiler)) {
+      return compiler.normalize();
+    }
+
+    throw new HumanReadableException(
+        "Could not resolve kotlin annotation processing JAR location (kotlin home:" + getKotlinHome() + ").");
   }
 
   /**
