@@ -119,6 +119,7 @@ public class ExternalKotlinc implements Kotlinc {
 
     ImmutableList<String> command =
         ImmutableList.<String>builder()
+            .addAll(options)
             .add(pathToKotlinc.toString())
             .addAll(
                 transform(

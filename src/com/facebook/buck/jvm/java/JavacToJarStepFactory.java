@@ -243,7 +243,7 @@ public class JavacToJarStepFactory extends BaseCompileToJarStepFactory {
     }
   }
 
-  private static void addAnnotationGenFolderStep(
+  public static void addAnnotationGenFolderStep(
       JavacOptions buildTimeOptions,
       ProjectFilesystem filesystem,
       ImmutableList.Builder<Step> steps,

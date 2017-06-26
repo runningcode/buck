@@ -60,9 +60,10 @@ public class KotlinLibraryIntegrationTest {
     Path resolve = workspace.getBuckPaths().getGenDir().resolve("com/example/ap/__kotlin__srcs");
     File[] files = resolve.toFile().listFiles();
 
-    for (File theFile : files) {
+//    for (File theFile : files) {
+//      System.out.println("File is " + theFile.toString());
 
-    }
+//    }
     buildResult.assertSuccess("Build should have succeeded.");
   }
 

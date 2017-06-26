@@ -17,6 +17,8 @@ package com.facebook.buck.jvm.kotlin;
 
 import static com.google.common.collect.Iterables.transform;
 
+import com.facebook.buck.event.CompilerErrorEvent;
+import com.facebook.buck.event.ConsoleEvent;
 import com.facebook.buck.io.ProjectFilesystem;
 import com.facebook.buck.log.Logger;
 import com.facebook.buck.model.BuildTarget;
@@ -29,12 +31,14 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Charsets;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Optional;
 
+@SuppressWarnings("unused")
 public class KotlincStep implements Step {
   private static final Logger LOG = Logger.get(KotlincStep.class);
 
@@ -43,6 +47,7 @@ public class KotlincStep implements Step {
   private static final String INCLUDE_RUNTIME_FLAG = "-include-runtime";
   private static final String EXCLUDE_RUNTIME = "-no-stdlib";
   private static final String EXCLUDE_REFLECT = "-no-reflect";
+  private static final String VERBOSE = "-verbose";
 
   private final Kotlinc kotlinc;
   private final ImmutableSortedSet<Path> combinedClassPathEntries;
@@ -103,14 +108,32 @@ public class KotlincStep implements Step {
               filesystem);
 
       String firstOrderStderr = stderr.getContentsAsString(Charsets.UTF_8);
+      String firstOrderStdout = stdout.getContentsAsString(Charsets.UTF_8);
       Optional<String> returnedStderr;
       if (declaredDepsBuildResult != 0) {
-        returnedStderr = Optional.of(firstOrderStderr);
+        returnedStderr = processBuildFailure(context, firstOrderStdout, firstOrderStderr);
       } else {
         returnedStderr = Optional.empty();
       }
       return StepExecutionResult.of(declaredDepsBuildResult, returnedStderr);
     }
+  }
+
+  private Optional<String> processBuildFailure(
+      ExecutionContext context, String firstOrderStdout, String firstOrderStderr) {
+    ImmutableList.Builder<String> errorMessage = ImmutableList.builder();
+    errorMessage.add(firstOrderStderr);
+
+    ImmutableSet<String> suggestions = ImmutableSet.of();
+    CompilerErrorEvent evt =
+        CompilerErrorEvent.create(
+            invokingRule, firstOrderStderr, CompilerErrorEvent.CompilerType.Java, suggestions);
+    context.postEvent(evt);
+
+    if (!firstOrderStdout.isEmpty()) {
+      context.postEvent(ConsoleEvent.info("%s", firstOrderStdout));
+    }
+    return Optional.of(Joiner.on("\n").join(errorMessage.build()));
   }
 
   @VisibleForTesting
@@ -148,8 +171,9 @@ public class KotlincStep implements Step {
 //    builder.add(INCLUDE_RUNTIME_FLAG);
     builder.add(EXCLUDE_REFLECT);
     builder.add(EXCLUDE_RUNTIME);
-    builder.add("-jvm-target");
-    builder.add("1.6");
+//    builder.add("-jvm-target");
+//    builder.add("1.6");
+    builder.add(VERBOSE);
 
     if (!buildClasspathEntries.isEmpty()) {
       builder.add(
